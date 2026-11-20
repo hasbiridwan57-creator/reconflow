@@ -26,7 +26,8 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
   // Jembatan Sisi Bank — rincian per item penyesuaian.
   const bankAdj = session.adjustments.filter((a) => a.side === "BANK");
   const bookAdj = session.adjustments.filter((a) => a.side === "BOOK");
-  const bankRows: string[][] = [["Saldo akhir bank", formatIDR(meta.endingBankBalance)]];
+  // Baris pertama 3 kolom penuh agar nominal tak bergeser ke kolom Kategori.
+  const bankRows: string[][] = [["Saldo akhir bank", "", formatIDR(meta.endingBankBalance)]];
   for (const a of bankAdj) {
     bankRows.push([`   ${a.description}`, getCategoryLabel(a.category), formatIDRAccounting(a.signedAmount)]);
   }
@@ -78,18 +79,17 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
     });
   }
 
-  // Footer status (Match Rate format persen benar).
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(9);
-  doc.text(
-    `Status: ${meta.status}  |  Selisih: ${s.isBalanced ? "SEIMBANG (Rp 0)" : `Rp ${s.variance.toLocaleString("id-ID")}`}  |  Match Rate: ${(s.matchRate * 100).toFixed(1)}%`,
-    14,
-    doc.internal.pageSize.getHeight() - 12,
-  );
-
-  // Blok Tanda Tangan Formal (2 kolom sejajar).
+  // Blok Tanda Tangan Formal — posisi DINAMIS dari lastAutoTable.finalY.
   const pageHeight = doc.internal.pageSize.getHeight();
-  const signY = pageHeight - 52;
+  const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+  let signY: number;
+  if (finalY + 58 > pageHeight - 18) {
+    doc.addPage();
+    signY = 28;
+  } else {
+    signY = finalY + 18;
+  }
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   const col1X = 20;
@@ -113,7 +113,17 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
   const printedDate = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
   doc.text(`Tanggal cetak: ${printedDate}`, col1X, dateY);
 
-  return doc.output("arraybuffer") as unknown as Uint8Array;
+  // Footer Status — PALING AKHIR (setelah blok tanda tangan digambar),
+  // di bawah halaman terakhir agar tak pernah menabrak tabel jurnal.
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(9);
+  doc.text(
+    `Status: ${meta.status}  |  Selisih: ${s.isBalanced ? "SEIMBANG (Rp 0)" : `Rp ${s.variance.toLocaleString("id-ID")}`}  |  Match Rate: ${(s.matchRate * 100).toFixed(1)}%`,
+    14,
+    doc.internal.pageSize.getHeight() - 12,
+  );
+
+  return new Uint8Array(doc.output("arraybuffer") as ArrayBuffer);
 }
 
 function formatIDR(n: number): string {

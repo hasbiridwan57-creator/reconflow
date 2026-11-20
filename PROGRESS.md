@@ -90,6 +90,18 @@
 ### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
 1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
 
+## Redesign UX 2-Tab + Inbox Zero + Cermin Saldo (Gemini audit #3)
+- [x] **Fix PDF**: `bankRows` 3 kolom penuh (nominal tak bergeser); posisi blok tanda tangan dinamis dari `lastAutoTable.finalY` (auto addPage bila muat); footer status dipindah ke paling akhir (tak menabrak jurnal).
+- [x] **Helper `adjustments.ts`**: `BANK_CATEGORIES`, `POSITIVE_CATEGORIES`, `defaultContraAccount`, `buildAdjustmentFields`, `getAdjustmentImpactLabel` terpusat (Zero Drift) — dipakai POST/PATCH/bulk adjustments.
+- [x] **Upgrade suggester**: interface `CategorySuggestion` (category + reason + impactLabel + isAnomaly); deteksi double charge (B-507↔B-506), unknown charge (B-510); urutan deteksi wajib — `"biaya"/"admin"` dicek SEBELUM `"nsf"` agar B-505 → BANK_FEE.
+- [x] **2 endpoint bulk atomik**: `POST /matches/approve-all` (hanya SUGGESTED_MATCH, DISCREPANCY_MATCH tak disentuh); `POST /adjustments/bulk` (validasi + `$transaction` + 409 bila semua sudah terpakai / FINALIZED). Shared Zod `BulkCreateAdjustmentsSchema` + API client `approveAllSuggested` & `createBulkAdjustments`.
+- [x] **Workspace 2 tab**: hapus 4 stepper, 3 sub-tab bersarang, 4 KPI card, LiveReconStickyBar, DemoAuditBrief. Header ringkas + 2 tab (Meja Rekonsiliasi / Laporan & Ekspor) + drawer Pengaturan (metadata + MatchingControlsBar).
+- [x] **Meja Rekonsiliasi (Inbox Zero)**: progress bar tunggal; Seksi 1 Perlu Perhatian Audit (discrepancy + anomaly); Seksi 2 Saran Pasangan (Setujui Semua); Seksi 3 Sisa Rutin (filter + Terapkan Semua Saran Cerdas + tombol utama indigo + dropdown dampak); state Inbox Zero Achieved (kartu emerald); 2 accordion (Penyesuaian Tercatat + Transaksi Sudah Cocok).
+- [x] **Cermin Saldo (sticky)**: badge BALANCED/BELUM, selisih besar, ringkasan Sisi Bank & Buku vertikal, mini stats, CTA kontekstual.
+- [x] **`/new` 2 langkah**: dual dropzone + status auto-deteksi; column mapper & preview disembunyikan dalam accordion (auto-terbuka bila kolom wajib gagal terdeteksi).
+- [x] **Test**: suggester (8 test — B-504/B-505/B-506/B-507/B-510); integration (approve-all, bulk 201+409, PDF skenario 3); total **107 test**.
+- [x] Gate hijau: tsc 0 / lint 0 / test 107/107 / build 17 route.
+
 ## Putaran Audit Gemini ke-2 (Nov 2026)
 - [x] Fix `GET /api/sessions`: variance dihitung dari penyesuaian bertanda langsung (bukan membalik `signedAmount`); unclassifiedCount hanya hitung transaksi tanpa match & tanpa adjustment.
 - [x] Fix ekspor PDF/Excel: rincian item penyesuaian per baris; footer Match Rate persen betul; blok tanda tangan formal di PDF; `numFmt='0.0%'` untuk Match Rate di Excel.

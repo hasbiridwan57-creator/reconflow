@@ -1,12 +1,8 @@
 import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { CreateAdjustmentSchema, AdjustmentCategorySchema } from "@/lib/schemas/reconciliation";
+import { buildAdjustmentFields } from "@/lib/engine/adjustments";
 import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
-
-// Tabel 3.3: side diturunkan dari category (BANK vs BOOK).
-const BANK_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "OUTSTANDING_CHECK", "BANK_ERROR_ADD", "BANK_ERROR_DEDUCT"]);
-// Tanda: positif menambah, negatif mengurangi saldo sisi tsb.
-const POSITIVE_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "BANK_ERROR_ADD", "INTEREST_INCOME", "UNRECORDED_RECEIPT", "BOOK_ERROR_ADD"]);
 
 /** POST /api/sessions/[id]/adjustments — klasifikasi penyesuaian (spec §7 endpoint 12). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -28,7 +24,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await assertNotFinalized(id);
 
     const categoryEnum = AdjustmentCategorySchema.parse(category);
-    const side = BANK_CATEGORIES.has(categoryEnum) ? "BANK" : "BOOK";
 
     let amount = customAmount;
     if (transactionId) {
@@ -38,11 +33,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!customAmount) amount = tx.amount;
     }
 
-    const absAmount = Math.abs(Math.round(amount ?? 0));
-    const signedAmount = POSITIVE_CATEGORIES.has(categoryEnum) ? absAmount : -absAmount;
-
-    // COA default untuk sisi BOOK jika user tidak isi.
-    const finalContra = side === "BOOK" && !contraAccountName ? defaultContra(categoryEnum) : contraAccountName;
+    const { side, signedAmount, contraAccountName: finalContra } =
+      buildAdjustmentFields(categoryEnum, amount ?? 0, contraAccountName);
 
     const adjustment = await prisma.classifiedAdjustment.create({
       data: {
@@ -66,18 +58,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     return handleError(error);
   }
-}
-
-function defaultContra(category: string): string {
-  const map: Record<string, string> = {
-    INTEREST_INCOME: "Pendapatan Jasa Giro",
-    UNRECORDED_RECEIPT: "Piutang Usaha",
-    BANK_FEE: "Beban Administrasi Bank",
-    TAX_ON_INTEREST: "Beban Pajak Jasa Giro",
-    NSF_CHECK: "Piutang Usaha (Cek Kosong)",
-    UNRECORDED_EXPENSE: "Beban Lain-lain",
-    BOOK_ERROR_ADD: "Koreksi Beban / Selisih Pembukuan",
-    BOOK_ERROR_DEDUCT: "Koreksi Beban / Selisih Pembukuan",
-  };
-  return map[category] ?? "Koreksi Beban / Selisih Pembukuan";
 }

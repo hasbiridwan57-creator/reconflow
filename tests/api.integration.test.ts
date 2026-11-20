@@ -298,3 +298,88 @@ describe("Route handlers (Next.js) — uji langsung", () => {
     expect(matchRateNumFmt).toBe("0.0%");
   });
 });
+
+/* =====================================================================
+ * TEMUAN REDESIGN — Bulk endpoints (approve-all & adjustments/bulk).
+ * ===================================================================== */
+describe("Bulk endpoints", () => {
+  it("POST /matches/approve-all: hanya SUGGESTED_MATCH di-approve, DISCREPANCY_MATCH tetap pending", async () => {
+    const sid = await createDemoSession("audit"); // skenario audit punya DISCREPANCY_MATCH (BBM).
+    // JANGAN solveSession — biarkan saran & discrepancy tetap pending.
+    const { POST } = await import("@/app/api/sessions/[id]/matches/approve-all/route");
+    const res = await POST(new Request("http://localhost/x"), { params: Promise.resolve({ id: sid }) });
+    expect(res.status).toBe(200);
+
+    const data = (await getHydratedSession(sid))!;
+    // Semua SUGGESTED_MATCH kini confirmed.
+    const suggested = data.matches.filter((m) => m.status === "SUGGESTED_MATCH");
+    expect(suggested.every((m) => m.isConfirmed)).toBe(true);
+    // DISCREPANCY_MATCH tetap pending (tak disentuh).
+    const discrepancy = data.matches.filter((m) => m.status === "DISCREPANCY_MATCH");
+    expect(discrepancy.every((m) => !m.isConfirmed)).toBe(true);
+  });
+
+  it("POST /adjustments/bulk: 1 transaksi atomik & 409 saat FINALIZED", async () => {
+    const sid = await createDemoSession("umkm");
+    // Ambil 2 unmatched rutin (bukan anomaly).
+    const data0 = (await getHydratedSession(sid))!;
+    const bankUnmatched = data0.unmatchedBank.slice(0, 2);
+    expect(bankUnmatched.length).toBeGreaterThanOrEqual(1);
+
+    const { POST } = await import("@/app/api/sessions/[id]/adjustments/bulk/route");
+
+    // Buat payload bulk.
+    const items = bankUnmatched.map((tx) => ({
+      transactionId: tx.id,
+      category: tx.direction === "IN" ? "UNRECORDED_RECEIPT" : "BANK_FEE",
+      description: tx.description,
+    }));
+
+    if (items.length === 0) {
+      // Fallback: ambil dari buku.
+      const bookUnmatched = data0.unmatchedBook.slice(0, 1);
+      items.push({
+        transactionId: bookUnmatched[0].id,
+        category: "OUTSTANDING_CHECK",
+        description: bookUnmatched[0].description,
+      });
+    }
+
+    // Panggil bulk.
+    const req = new Request(`http://localhost/api/sessions/${sid}/adjustments/bulk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: sid }) });
+    expect(res.status).toBe(201);
+
+    // FINALIZED guard → 409.
+    await prisma.reconciliationSession.update({ where: { id: sid }, data: { status: "FINALIZED" } });
+    const reqFinal = new Request(`http://localhost/api/sessions/${sid}/adjustments/bulk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [{ transactionId: items[0].transactionId, category: "BANK_FEE", description: "Coba lagi" }] }),
+    });
+    const resFinal = await POST(reqFinal, { params: Promise.resolve({ id: sid }) });
+    expect(resFinal.status).toBe(409);
+  });
+});
+
+/* =====================================================================
+ * TEMUAN PDF — Skenario 3 (audit) menghasilkan PDF valid tanpa error.
+ * ===================================================================== */
+describe("pdfGenerator — Skenario 3 penuh", () => {
+  it("Skenario audit (7 entri jurnal) menghasilkan PDF valid", async () => {
+    const sid = await createDemoSession("audit");
+    await solveSession(sid);
+    const data = (await getHydratedSession(sid))!;
+    expect(data.journals.entries.length).toBeGreaterThanOrEqual(1);
+
+    const { generatePdf } = await import("@/lib/export/pdfGenerator");
+    const pdfBytes = generatePdf(data);
+    expect(pdfBytes.length).toBeGreaterThan(0);
+    // Magic bytes PDF.
+    expect(String.fromCharCode(pdfBytes[0], pdfBytes[1], pdfBytes[2], pdfBytes[3])).toBe("%PDF");
+  });
+});

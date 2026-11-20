@@ -121,6 +121,18 @@ export const CreateAdjustmentSchema = z.object({
   customAmount: z.number().positive().optional(),
 });
 
+/** Payload bulk klasifikasi banyak transaksi sekaligus (atomik). */
+export const BulkCreateAdjustmentsSchema = z.object({
+  items: z.array(
+    z.object({
+      transactionId: z.string().min(1),
+      category: AdjustmentCategorySchema,
+      description: z.string().min(2),
+      contraAccountName: z.string().optional(),
+    }),
+  ).min(1),
+});
+
 export const UpdateAdjustmentSchema = z.object({
   category: AdjustmentCategorySchema.optional(),
   description: z.string().min(2).optional(),

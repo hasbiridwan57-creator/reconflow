@@ -1,10 +1,8 @@
 import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { UpdateAdjustmentSchema, AdjustmentCategorySchema } from "@/lib/schemas/reconciliation";
+import { buildAdjustmentFields } from "@/lib/engine/adjustments";
 import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
-
-const BANK_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "OUTSTANDING_CHECK", "BANK_ERROR_ADD", "BANK_ERROR_DEDUCT"]);
-const POSITIVE_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "BANK_ERROR_ADD", "INTEREST_INCOME", "UNRECORDED_RECEIPT", "BOOK_ERROR_ADD"]);
 
 /** PATCH & DELETE /api/sessions/[id]/adjustments/[adjId] (spec §7 endpoint 13). */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; adjId: string }> }) {
@@ -27,11 +25,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (parsed.data.category) {
       const categoryEnum = AdjustmentCategorySchema.parse(parsed.data.category);
-      data.category = categoryEnum;
-      data.side = BANK_CATEGORIES.has(categoryEnum) ? "BANK" : "BOOK";
-      // Hitung ulang signedAmount dengan nominal absolut asli.
       const absAmount = Math.abs(adj.signedAmount);
-      data.signedAmount = POSITIVE_CATEGORIES.has(categoryEnum) ? absAmount : -absAmount;
+      const { side, signedAmount } = buildAdjustmentFields(categoryEnum, absAmount);
+      data.category = categoryEnum;
+      data.side = side;
+      data.signedAmount = signedAmount;
     }
 
     await prisma.classifiedAdjustment.update({ where: { id: adjId }, data });

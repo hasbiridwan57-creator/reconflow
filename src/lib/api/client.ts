@@ -67,6 +67,13 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  approveAllSuggested: (id: string) =>
+    request<HydratedSessionResponse>(`/api/sessions/${id}/matches/approve-all`, { method: "POST" }),
+  createBulkAdjustments: (id: string, items: Array<Record<string, unknown>>) =>
+    request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments/bulk`, {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    }),
   deleteMatch: (id: string, matchId: string) =>
     request<HydratedSessionResponse>(`/api/sessions/${id}/matches/${matchId}`, { method: "DELETE" }),
   manualPair: (id: string, body: Record<string, unknown>) =>

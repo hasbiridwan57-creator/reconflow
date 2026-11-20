@@ -1,16 +1,18 @@
 /**
- * Halaman /new — Dual CSV Intake & Column Mapper (spec §10.2 Halaman 2).
+ * Halaman /new — Dual CSV Intake 2 Langkah Ringkas.
+ * Step 1: 2 dropzone CSV + status auto-deteksi.
+ * Step 2: Metadata ringkas + collapsible accordion untuk column mapper.
  */
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { api } from "@/lib/api/client";
 import { parseIndonesianCurrency, parseFlexibleDate, COLUMN_ALIASES, type ColumnRole } from "@/lib/engine/parser";
-import { Upload, FileDown } from "lucide-react";
+import { Upload, FileDown, ChevronDown, ChevronRight } from "lucide-react";
 
 interface ParsedFile {
   fileName: string;
@@ -21,6 +23,8 @@ interface ParsedFile {
 
 const BANK_TEMPLATE = "tanggal,no_referensi,keterangan,debit_keluar,kredit_masuk,saldo\n2026-10-02,BNK-001,\"Keterangan\",0,1000000,1000000\n";
 const BOOK_TEMPLATE = "tanggal,no_bukti,deskripsi,akun_lawan,debit_masuk,kredit_keluar,saldo\n2026-10-02,BKM-001,\"Keterangan\",\"Kas\",1000000,0,1000000\n";
+
+const REQUIRED_ROLES: ColumnRole[] = ["date", "description", "debit", "credit"];
 
 function downloadTemplate(content: string, filename: string) {
   const blob = new Blob([content], { type: "text/csv" });
@@ -52,12 +56,15 @@ function Dropzone({ label, parsed, onFile, template, templateName }: {
   template: string;
   templateName: string;
 }) {
+  const missingRoles = parsed
+    ? REQUIRED_ROLES.filter((r) => !parsed.mapping[r])
+    : [];
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-900">{label}</h3>
         <button onClick={() => downloadTemplate(template, templateName)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
-          <FileDown className="h-3.5 w-3.5" /> Unduh Template
+          <FileDown className="h-3.5 w-3.5" /> Template
         </button>
       </div>
       <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 py-8 transition hover:border-indigo-400 hover:bg-slate-50">
@@ -66,7 +73,14 @@ function Dropzone({ label, parsed, onFile, template, templateName }: {
         <input type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
       </label>
       {parsed && (
-        <div className="mt-3 text-xs text-slate-500">{parsed.rows.length} baris terdeteksi.</div>
+        <div className="mt-3 space-y-1 text-xs">
+          <div className="text-emerald-600">✓ {parsed.rows.length} baris · {parsed.headers.length} kolom terdeteksi.</div>
+          {missingRoles.length > 0 ? (
+            <div className="text-amber-600">⚠ Kolom wajib belum terdeteksi: {missingRoles.join(", ")}</div>
+          ) : (
+            <div className="text-slate-500">Semua kolom wajib terdeteksi otomatis.</div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -83,6 +97,15 @@ export default function NewSessionPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // Auto buka accordion jika ada kolom wajib yang gagal terdeteksi.
+  const mapperAutoOpen = useMemo(() => {
+    if (!bank && !book) return false;
+    const check = (p: ParsedFile | null) => p ? REQUIRED_ROLES.some((r) => !p.mapping[r]) : false;
+    return check(bank) || check(book);
+  }, [bank, book]);
+  const [mapperOpen, setMapperOpen] = useState<boolean | null>(null);
+  const mapperIsOpen = mapperOpen ?? mapperAutoOpen;
+
   function handleFile(file: File, source: "BANK" | "BOOK") {
     Papa.parse<Record<string, string>>(file, {
       header: true, skipEmptyLines: true, complete: (result) => {
@@ -94,10 +117,8 @@ export default function NewSessionPage() {
         };
         if (source === "BANK") setBank(parsed); else setBook(parsed);
 
-        // Auto-isi saldo akhir dari baris terakhir jika ada kolom saldo.
         const last = result.data[result.data.length - 1];
         const saldoKey = parsed.mapping.balance;
-        // Auto-isi tanggal akhir periode dari tanggal transaksi terbaru (max) di CSV.
         const dateKey = parsed.mapping.date;
         const latestDate = dateKey
           ? result.data.reduce<string>((max, row) => {
@@ -109,18 +130,15 @@ export default function NewSessionPage() {
           ...m,
           ...(source === "BANK" ? { endingBankBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBankBalance }
                                 : { endingBookBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBookBalance }),
-          // Hanya auto-isi periodEndDate jika masih kosong.
           ...(latestDate && !m.periodEndDate ? { periodEndDate: latestDate } : {}),
         }));
       },
     });
   }
 
-  // Saat mapping balance diubah, perbarui saldo akhir otomatis dari baris terakhir.
   function handleMappingChange(itemLabel: "Bank" | "Buku", parsed: ParsedFile, val: string | null, role: ColumnRole) {
     const updated = { ...parsed, mapping: { ...parsed.mapping, [role]: val } };
     if (itemLabel === "Bank") setBank(updated); else setBook(updated);
-    // Jika mengubah kolom balance, refresh saldo akhir sesuai baris terakhir.
     if (role === "balance" && val) {
       const last = parsed.rows[parsed.rows.length - 1];
       if (last) {
@@ -170,14 +188,15 @@ export default function NewSessionPage() {
       <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">Impor Dual CSV</h1>
       <p className="mb-6 text-sm text-slate-600">Unggah Rekening Koran Bank &amp; Buku Kas Perusahaan, lalu jalankan auto-match.</p>
 
+      {/* Langkah 1 — Dual dropzone */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Dropzone label="Rekening Koran Bank (.csv)" parsed={bank} onFile={(f) => handleFile(f, "BANK")} template={BANK_TEMPLATE} templateName="template_bank.csv" />
-        <Dropzone label="Buku Kas Perusahaan (.csv)" parsed={book} onFile={(f) => handleFile(f, "BOOK")} template={BOOK_TEMPLATE} templateName="template_buku.csv" />
+        <Dropzone label="1a. Rekening Koran Bank (.csv)" parsed={bank} onFile={(f) => handleFile(f, "BANK")} template={BANK_TEMPLATE} templateName="template_bank.csv" />
+        <Dropzone label="1b. Buku Kas Perusahaan (.csv)" parsed={book} onFile={(f) => handleFile(f, "BOOK")} template={BOOK_TEMPLATE} templateName="template_buku.csv" />
       </div>
 
-      {/* Metadata form */}
+      {/* Langkah 2 — Metadata */}
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="mb-4 text-sm font-semibold text-slate-900">Metadata Sesi</h3>
+        <h3 className="mb-4 text-sm font-semibold text-slate-900">2. Metadata Sesi</h3>
         <div className="grid gap-4 md:grid-cols-3">
           {([
             ["companyName", "Nama Perusahaan", "text"], ["bankAccountName", "Nama Rekening Bank", "text"],
@@ -208,44 +227,65 @@ export default function NewSessionPage() {
         </div>
       </div>
 
-      {/* Column mapper preview */}
+      {/* Column Mapper — collapsible accordion */}
       {(bank || book) && (
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {[bank && { label: "Bank", parsed: bank }, book && { label: "Buku", parsed: book }].filter(Boolean).map((item) => {
-            const p = item!.parsed;
-            return (
-              <div key={item!.label} className="rounded-xl border border-slate-200 bg-white p-5">
-                <h3 className="mb-3 text-sm font-semibold text-slate-900">Column Mapper — {item!.label}</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {(Object.keys(COLUMN_ALIASES) as ColumnRole[]).map((role) => (
-                    <label key={role} className="block">
-                      <span className="mb-1 block text-xs text-slate-500">{role}</span>
-                      <select
-                        value={p.mapping[role] ?? ""}
-                        onChange={(e) => handleMappingChange(item!.label as "Bank" | "Buku", p, e.target.value || null, role)}
-                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500"
-                      >
-                        <option value="">— (abaikan) —</option>
-                        {p.headers.map((h) => <option key={h} value={h}>{h}</option>)}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="border-b border-slate-200 text-left text-slate-500">
-                      <tr>{p.headers.slice(0, 5).map((h) => <th key={h} className="px-2 py-2 font-medium">{h}</th>)}</tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {p.rows.slice(0, 5).map((row, i) => (
-                        <tr key={i}>{p.headers.slice(0, 5).map((h) => <td key={h} className="px-2 py-1.5 text-slate-700">{row[h]}</td>)}</tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white">
+          <button
+            onClick={() => setMapperOpen(!mapperIsOpen)}
+            className="flex w-full items-center justify-between p-4 text-left"
+          >
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+              {mapperIsOpen ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+              Sesuaikan Pemetaan Kolom &amp; Preview
+            </div>
+            {!mapperAutoOpen && (
+              <span className="text-xs text-emerald-600">✓ Auto-deteksi OK</span>
+            )}
+            {mapperAutoOpen && (
+              <span className="text-xs text-amber-600">⚠ Perlu penyesuaian manual</span>
+            )}
+          </button>
+          {mapperIsOpen && (
+            <div className="border-t border-slate-100 p-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                {[bank && { label: "Bank", parsed: bank }, book && { label: "Buku", parsed: book }].filter(Boolean).map((item) => {
+                  const p = item!.parsed;
+                  return (
+                    <div key={item!.label} className="rounded-xl border border-slate-200 p-4">
+                      <h4 className="mb-3 text-sm font-semibold text-slate-900">Column Mapper — {item!.label}</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {(Object.keys(COLUMN_ALIASES) as ColumnRole[]).map((role) => (
+                          <label key={role} className="block">
+                            <span className="mb-1 block text-xs text-slate-500">{role}</span>
+                            <select
+                              value={p.mapping[role] ?? ""}
+                              onChange={(e) => handleMappingChange(item!.label as "Bank" | "Buku", p, e.target.value || null, role)}
+                              className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500"
+                            >
+                              <option value="">— (abaikan) —</option>
+                              {p.headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-4 overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="border-b border-slate-200 text-left text-slate-500">
+                            <tr>{p.headers.slice(0, 5).map((h) => <th key={h} className="px-2 py-2 font-medium">{h}</th>)}</tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {p.rows.slice(0, 5).map((row, i) => (
+                              <tr key={i}>{p.headers.slice(0, 5).map((h) => <td key={h} className="px-2 py-1.5 text-slate-700">{row[h]}</td>)}</tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          )}
         </div>
       )}
 
