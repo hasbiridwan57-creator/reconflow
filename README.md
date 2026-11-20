@@ -13,32 +13,33 @@ ReconFlow adalah aplikasi web fullstack B2B-grade yang menyatukan rekonsiliasi b
   1. *Exact match* — tanggal, nominal, referensi/deskripsi identik.
   2. *Fuzzy match* — skor kemiripan teks 0,6·Jaccard + 0,4·Dice + token referensi.
   3. *Transposition detection* — deteksi salah ketik nominal (kelipatan 9) → `DISCREPANCY_MATCH`.
+- **2-Tab Inbox Zero + Live Balance Mirror** — Meja Rekonsiliasi memprioritaskan item anomali (double charge bank, unknown charge) lalu saran pasangan, sisa rutin; panel Cermin Saldo menampilkan bridge 2 sisi + badge Debit = Kredit real-time.
+- **Smart categorization** — suggester berbasis kata kunci + deteksi **Double Charge Bank** & **Unknown Charge** (`isAnomaly: true`); bulk apply 1 klik + Setujui Semua Saran.
 - **Klasifikasi penyesuaian** dua sisi (BANK / BOOK) dengan kategori akuntansi formal (NSF check, bank fee, deposit in transit, outstanding check, dll).
 - **Auto Adjusting Journal Entries** — hanya penyesuaian sisi buku yang menjurnal; dijamin debit = kredit.
 - **Jembatan saldo (reconciliation bridge)** — saldo bank & buku disesuaikan **harus bertemu di variance Rp 0**.
 - **Audit trail** tiap mutasi (create/approve/klasifikasi/finalize) terekam permanen.
-- **Ekspor laporan formal** — PDF (jsPDF) & Excel 4-sheet (ExcelJS).
-- **Finalisasi & kunci sesi** dengan blok tanda tangan Prepared by / Reviewed by.
+- **Ekspor laporan formal** — PDF (jsPDF) & Excel 4-sheet (ExcelJS), blok tanda tangan Prepared by / Reviewed by.
 
 ## Arsitektur
 
 ```
 src/
 ├── app/
-│   ├── api/                    # 16 REST endpoint (App Router route handlers)
+│   ├── api/                    # 14 REST endpoint (App Router route handlers, incl. bulk actions)
 │   ├── page.tsx                # Beranda (demo cards + sesi terbaru)
-│   ├── new/                    # Wizard intake CSV + column mapper
-│   ├── workspace/[id]/         # Workspace rekonsiliasi 4 langkah
+│   ├── new/                    # Intake CSV 2 langkah (dual dropzone + column mapper dalam accordion)
+│   ├── workspace/[id]/         # 2-Tab Inbox Zero + Live Balance Mirror
 │   └── history/                # Arsip sesi + filter status
 ├── components/                 # UI (AppShell, workbench, laporan)
 ├── lib/
-│   ├── engine/                 # parser, textSimilarity, matcher, calculator, journals
+│   ├── engine/                 # parser, textSimilarity, matcher, suggester, calculator, journals, adjustments
 │   ├── schemas/                # Zod SSOT (Zero Drift frontend↔backend)
 │   ├── export/                 # pdfGenerator, excelGenerator
 │   ├── session.ts              # Service layer (hydration + persistence)
 │   └── db.ts                   # Prisma singleton
 └── prisma/schema.prisma        # Skema DB
-tests/                          # Vitest (73 test, termasuk 3 skenario e2e = Rp 0)
+tests/                          # Vitest (107 test: unit + integration + 3 skenario e2e = Rp 0)
 ```
 
 **Prinsip desain:** satu sumber kebenaran (SSOT) — skema Zod dipakai bersama frontend & backend; seluruh nominal uang disimpan & dihitung sebagai **integer Rupiah** (tanpa float) untuk akurasi akuntansi.
@@ -70,7 +71,7 @@ npm run dev
 # buka http://localhost:3000
 
 # 4. (Opsional) Verifikasi kualitas
-npm run test    # 73 test, 3 skenario demo = variance Rp 0
+npm run test    # 107 test (unit + integration + 3 skenario demo = variance Rp 0)
 npm run build   # build produksi
 ```
 

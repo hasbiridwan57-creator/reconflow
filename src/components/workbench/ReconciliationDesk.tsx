@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { api, type HydratedSessionResponse } from "@/lib/api/client";
 import { formatIDR, formatDateID, formatPercent } from "@/lib/format";
 import { getCategoryLabel } from "@/lib/engine/calculator";
-import { suggestAdjustmentCategory } from "@/lib/engine/suggester";
+import { suggestAdjustmentCategory, type CategorySuggestion } from "@/lib/engine/suggester";
 import { getAdjustmentImpactLabel } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
@@ -43,6 +43,7 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
   const finalized = data.session.status === "FINALIZED";
   const [loading, setLoading] = useState(false);
   const [faultSide, setFaultSide] = useState<"BOOK" | "BANK">("BOOK");
+  const [contraAccount, setContraAccount] = useState("");
 
   async function approve() {
     if (!match) return;
@@ -50,9 +51,26 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
     try {
       await api.approveMatch(data.session.id, match.id, {
         action: "APPROVE",
-        discrepancyResolution: { faultSide },
+        discrepancyResolution: {
+          faultSide,
+          ...(faultSide === "BOOK" && contraAccount ? { contraAccountName: contraAccount } : {}),
+        },
       });
       toast.success("Anomali diselesaikan.");
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function reject() {
+    if (!match) return;
+    setLoading(true);
+    try {
+      await api.approveMatch(data.session.id, match.id, { action: "REJECT" });
+      toast.info("Anomali ditolak.");
       onRefresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
@@ -74,6 +92,15 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
                 <b>{match.bookTx.description}</b> ({formatIDR(match.bookTx.amount)}) · Selisih{" "}
                 <span className="font-mono tabular-nums">{formatIDR(match.amountDiff)}</span>
               </div>
+              {match.reasons.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {match.reasons.map((r, i) => (
+                    <span key={i} className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                      {r}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                 <label className="flex items-center gap-1 text-slate-700">
                   <input type="radio" checked={faultSide === "BOOK"} onChange={() => setFaultSide("BOOK")} disabled={loading || finalized} />
@@ -84,13 +111,32 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
                   Kesalahan Bank (Tanpa Jurnal)
                 </label>
               </div>
-              <button
-                onClick={approve}
-                disabled={finalized || loading}
-                className="mt-3 rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
-              >
-                {loading ? "Memproses..." : "Selesaikan Anomali"}
-              </button>
+              {faultSide === "BOOK" && (
+                <input
+                  type="text"
+                  value={contraAccount}
+                  onChange={(e) => setContraAccount(e.target.value)}
+                  placeholder="Akun lawan (opsional, mis. Kas Besar)"
+                  disabled={loading || finalized}
+                  className="mt-2 w-full max-w-sm rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-50"
+                />
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={approve}
+                  disabled={finalized || loading}
+                  className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                >
+                  {loading ? "Memproses..." : "Selesaikan Anomali"}
+                </button>
+                <button
+                  onClick={reject}
+                  disabled={finalized || loading}
+                  className="rounded-lg border border-rose-300 px-4 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                >
+                  Tolak
+                </button>
+              </div>
             </>
           ) : null}
         </div>
@@ -101,12 +147,13 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
 
 /* ---------- Suggestion pill card untuk rutin ---------- */
 function RoutineCard({
-  tx, data, onRefresh, onPair,
+  tx, data, onRefresh, onPair, selected = false,
 }: {
   tx: TransactionDTO;
   data: HydratedSessionResponse;
   onRefresh: () => void;
   onPair: () => void;
+  selected?: boolean;
 }) {
   const finalized = data.session.status === "FINALIZED";
   const [loading, setLoading] = useState(false);
@@ -132,7 +179,7 @@ function RoutineCard({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className={`rounded-xl border bg-white p-4 ${selected ? "border-indigo-300 ring-2 ring-indigo-500 bg-indigo-50/40" : "border-slate-200"}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -151,7 +198,7 @@ function RoutineCard({
             disabled={finalized || loading}
             className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
           >
-            ✓ Catat: {getCategoryLabel(suggestion.category)} · {suggestion.isAnomaly ? "Anomali" : "Auto"}
+            ✓ {getCategoryLabel(suggestion.category)} · {suggestion.impactLabel}
           </button>
         )}
         <select
@@ -182,6 +229,7 @@ function BalanceMirror({ data, onGoReport }: { data: HydratedSessionResponse; on
   const bookAdj = data.adjustments.filter((a) => a.side === "BOOK").reduce((sum, a) => sum + a.signedAmount, 0);
   const journalCount = data.journals.entries.length;
   const remaining = s.unclassifiedCount + s.pendingSuggestedCount;
+  const journalBalanced = data.journals.isDoubleEntryBalanced;
 
   return (
     <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 lg:sticky lg:top-20">
@@ -233,7 +281,7 @@ function BalanceMirror({ data, onGoReport }: { data: HydratedSessionResponse; on
         <div className="flex justify-between">
           <span>Jurnal Penyesuaian</span>
           <span className="font-mono tabular-nums">
-            {journalCount} entri · {s.isBalanced ? "Seimbang" : "Belum"}
+            {journalCount} entri · {journalBalanced ? "Debit = Kredit" : "Tidak Seimbang"}
           </span>
         </div>
       </div>
@@ -284,6 +332,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   const [filter, setFilter] = useState<"ALL" | "BANK" | "BOOK">("ALL");
   const [selectedBank, setSelectedBank] = useState<string | null>(null);
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
+  const [manualFaultSide, setManualFaultSide] = useState<"BOOK" | "BANK">("BOOK");
 
   // Suggested yang belum dikonfirmasi.
   const suggestedPending = data.matches.filter((m) => !m.isConfirmed && m.status === "SUGGESTED_MATCH");
@@ -321,16 +370,31 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     return { bank, book };
   }, [data, adjTxIds, matchedBankTxs]);
 
-  // Anomali unmatched (double charge / unknown charge).
+  // Anomali unmatched (double charge / unknown charge) — simpan sug bersama tx.
   const anomalyUnmatched = useMemo(() => {
     const find = (list: TransactionDTO[], source: "BANK" | "BOOK") =>
-      list.filter((tx) => {
-        if (adjTxIds.has(tx.id)) return false;
-        const sug = suggestAdjustmentCategory({ source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount }, { matchedBankTxs });
-        return sug?.isAnomaly ?? false;
-      });
+      list
+        .filter((tx) => {
+          if (adjTxIds.has(tx.id)) return false;
+          const sug = suggestAdjustmentCategory({ source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount }, { matchedBankTxs });
+          return sug?.isAnomaly ?? false;
+        })
+        .map((tx) => {
+          const sug = suggestAdjustmentCategory({ source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount }, { matchedBankTxs });
+          return { tx, sug: sug! };
+        });
     return { bank: find(data.unmatchedBank, "BANK"), book: find(data.unmatchedBook, "BOOK") };
   }, [data, adjTxIds, matchedBankTxs]);
+
+  // Item rutin cerdas (sug tersedia, bukan anomali) — dipakai tombol bulk.
+  const smartRoutineItems = useMemo(() => {
+    const collect = (list: TransactionDTO[], source: "BANK" | "BOOK") =>
+      list
+        .map((tx) => ({ tx, sug: suggestAdjustmentCategory({ source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount }) }))
+        .filter((it): it is { tx: TransactionDTO; sug: NonNullable<CategorySuggestion> } => it.sug !== null && !it.sug.isAnomaly)
+        .map((it) => ({ transactionId: it.tx.id, category: it.sug.category, description: it.tx.description }));
+    return [...collect(unmatchedRoutine.bank, "BANK"), ...collect(unmatchedRoutine.book, "BOOK")];
+  }, [unmatchedRoutine]);
 
   // Filter untuk seksi rutin.
   const filteredRoutine = {
@@ -344,7 +408,6 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   const resolvedPct = Math.round((Math.min(resolvedTx, totalTx) / totalTx) * 100);
 
   const confirmedMatches = data.matches.filter((m) => m.isConfirmed);
-  const suggestionsWithRoutine = unmatchedRoutine.bank.length + unmatchedRoutine.book.length;
 
   async function approveAll() {
     if (finalized) { toast.error("Sesi sudah FINALIZED."); return; }
@@ -359,14 +422,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
 
   async function applyAllSmart() {
     if (finalized) { toast.error("Sesi sudah FINALIZED."); return; }
-    // Buat saran untuk semua item rutin (bank + book) yang belum diklasifikasi.
-    const items: Array<Record<string, unknown>> = [];
-    for (const tx of [...unmatchedRoutine.bank, ...unmatchedRoutine.book]) {
-      const sug = suggestAdjustmentCategory({ source: tx.source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount });
-      if (sug && !sug.isAnomaly) {
-        items.push({ transactionId: tx.id, category: sug.category, description: tx.description });
-      }
-    }
+    const items = smartRoutineItems;
     if (items.length === 0) {
       toast.info("Tidak ada saran cerdas untuk diterapkan.");
       return;
@@ -390,7 +446,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     try {
       await api.manualPair(data.session.id, {
         bankTxId: selectedBank, bookTxId: selectedBook,
-        ...(manualDiff !== 0 ? { discrepancyResolution: { faultSide: "BOOK" } } : {}),
+        ...(manualDiff !== 0 ? { discrepancyResolution: { faultSide: manualFaultSide } } : {}),
       });
       toast.success("Manual pair dibuat.");
       setSelectedBank(null); setSelectedBook(null); onRefresh();
@@ -447,11 +503,11 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
             {discrepancyPending.map((m) => (
               <AnomalyCard key={m.id} data={data} onRefresh={onRefresh} match={m} />
             ))}
-            {anomalyUnmatched.bank.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBank(tx.id)} />
+            {anomalyUnmatched.bank.map(({ tx, sug }) => (
+              <AnomalyTxCard key={tx.id} tx={tx} suggestion={sug} data={data} onRefresh={onRefresh} />
             ))}
-            {anomalyUnmatched.book.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBook(tx.id)} />
+            {anomalyUnmatched.book.map(({ tx, sug }) => (
+              <AnomalyTxCard key={tx.id} tx={tx} suggestion={sug} data={data} onRefresh={onRefresh} />
             ))}
           </div>
         )}
@@ -488,22 +544,22 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                   <option value="BANK">Hanya di Bank</option>
                   <option value="BOOK">Hanya di Buku</option>
                 </select>
-                {suggestionsWithRoutine >= 2 && (
+                {smartRoutineItems.length >= 2 && (
                   <button
                     onClick={applyAllSmart}
                     disabled={finalized}
                     className="flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
                   >
-                    <Sparkles className="h-3 w-3" /> Terapkan Semua Saran Cerdas ({suggestionsWithRoutine})
+                    <Sparkles className="h-3 w-3" /> Terapkan Semua Saran Cerdas ({smartRoutineItems.length})
                   </button>
                 )}
               </div>
             </div>
             {filteredRoutine.bank.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBank(tx.id)} />
+              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBank(tx.id)} selected={selectedBank === tx.id} />
             ))}
             {filteredRoutine.book.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBook(tx.id)} />
+              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBook(tx.id)} selected={selectedBook === tx.id} />
             ))}
           </div>
         )}
@@ -529,12 +585,39 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       </div>
 
       {/* Modal manual pair */}
+      {/* Floating pill: 1 sisi terpilih */}
+      {((selectedBank && !selectedBook) || (!selectedBank && selectedBook)) && (
+        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full border border-indigo-200 bg-white px-4 py-2 shadow-lg">
+          <span className="text-xs text-slate-700">
+            1 transaksi <b>{selectedBank ? "Bank" : "Buku"}</b> terpilih — pilih pasangan di sisi lawan
+          </span>
+          <button
+            onClick={() => { setSelectedBank(null); setSelectedBook(null); }}
+            className="rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Batal
+          </button>
+        </div>
+      )}
+
+      {/* Modal manual pair: 2 sisi terpilih */}
       {selectedBank && selectedBook && (
         <div className="fixed bottom-6 left-1/2 z-40 w-[min(92vw,560px)] -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
           <div className="mb-2 text-sm text-slate-700">2 transaksi terpilih. Pasangkan manual?</div>
           {manualDiff !== 0 && (
-            <div className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
-              Nominal beda {formatIDR(manualDiff)}. Sisi kesalahan: <b>Buku</b> (default).
+            <div className="mb-2 space-y-2">
+              <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
+                Nominal beda {formatIDR(manualDiff)}. Pilih sisi kesalahan:
+              </div>
+              <select
+                value={manualFaultSide}
+                onChange={(e) => setManualFaultSide(e.target.value as "BOOK" | "BANK")}
+                disabled={finalized}
+                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-50"
+              >
+                <option value="BOOK">Kesalahan Buku (Buat Jurnal)</option>
+                <option value="BANK">Kesalahan Bank (Tanpa Jurnal)</option>
+              </select>
             </div>
           )}
           <div className="flex gap-2">
@@ -549,6 +632,82 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ---------- Kartu anomali tak termatch (double charge / unknown charge) ---------- */
+function AnomalyTxCard({
+  tx, suggestion, data, onRefresh,
+}: {
+  tx: TransactionDTO;
+  suggestion: CategorySuggestion;
+  data: HydratedSessionResponse;
+  onRefresh: () => void;
+}) {
+  const finalized = data.session.status === "FINALIZED";
+  const [loading, setLoading] = useState(false);
+  const side = tx.source;
+
+  async function classify(category: AdjustmentCategory) {
+    setLoading(true);
+    try {
+      await api.createAdjustment(data.session.id, { transactionId: tx.id, category, description: tx.description });
+      toast.success("Diklasifikasi.");
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const cats = side === "BANK"
+    ? (tx.direction === "IN" ? BANK_IN_CATS : BANK_OUT_CATS)
+    : (tx.direction === "IN" ? BOOK_IN_CATS : BOOK_OUT_CATS);
+
+  return (
+    <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <SourceBadge source={side} />
+            <DirectionPill direction={tx.direction} />
+            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+              ANOMALI
+            </span>
+          </div>
+          <div className="mt-1 truncate text-sm font-medium text-slate-900">{tx.description}</div>
+          <div className="text-xs text-slate-500">{tx.reference || "—"} · {formatDateID(tx.date)}</div>
+        </div>
+        <div className="font-mono text-sm tabular-nums text-right text-slate-900">{formatIDR(tx.amount)}</div>
+      </div>
+      <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-2 text-xs text-amber-800">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600" />
+        <span className="font-medium">{suggestion.reason}</span>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => classify(suggestion.category)}
+          disabled={finalized || loading}
+          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+        >
+          ✓ {getCategoryLabel(suggestion.category)} · {suggestion.impactLabel}
+        </button>
+        <select
+          defaultValue=""
+          onChange={(e) => e.target.value && classify(e.target.value as AdjustmentCategory)}
+          disabled={finalized || loading}
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-50"
+        >
+          <option value="">Kategori Lain ▾</option>
+          {cats.map((c) => (
+            <option key={c} value={c}>
+              {getCategoryLabel(c)} — {getAdjustmentImpactLabel(c as AdjustmentCategory)}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
@@ -629,8 +788,16 @@ function AdjustmentList({ data, onRefresh }: { data: HydratedSessionResponse; on
             {!finalized && (
               <button
                 onClick={async () => {
-                  try { await api.deleteAdjustment(data.session.id, a.id); toast.success("Dibatalkan."); onRefresh(); }
-                  catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
+                  try {
+                    if (a.matchPairId) {
+                      await api.deleteMatch(data.session.id, a.matchPairId);
+                      toast.success("Pasangan & penyesuaian dibatalkan.");
+                    } else {
+                      await api.deleteAdjustment(data.session.id, a.id);
+                      toast.success("Dibatalkan.");
+                    }
+                    onRefresh();
+                  } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
                 }}
                 className="text-xs text-slate-400 hover:text-rose-600"
               >Batalkan</button>

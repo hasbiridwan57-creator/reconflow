@@ -31,6 +31,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
     const ownedMap = new Map(owned.map((t) => [t.id, t]));
 
+    // 422 validation error dicek dulu sebelum 409 eligibility.
+    const missing = items.filter((i) => !ownedMap.has(i.transactionId));
+    if (missing.length > 0) {
+      return failure("VALIDATION_ERROR", `${missing.length} transactionId bukan milik sesi ini.`, 422);
+    }
+
     // Filter hanya yang belum punya adjustment/match; skip yang sudah.
     const eligible = items.filter((i) => {
       const t = ownedMap.get(i.transactionId);
@@ -40,11 +46,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (eligible.length === 0) {
       return failure("CONFLICT", "Semua transaksi sudah memiliki penyesuaian atau pasangan.", 409);
-    }
-
-    const missing = items.filter((i) => !ownedMap.has(i.transactionId));
-    if (missing.length > 0) {
-      return failure("VALIDATION_ERROR", `${missing.length} transactionId bukan milik sesi ini.`, 422);
     }
 
     const created = await prisma.$transaction(async (tx) => {

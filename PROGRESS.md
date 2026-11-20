@@ -90,6 +90,17 @@
 ### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
 1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
 
+## Putaran Final Polish (Gemini audit #4)
+- [x] **Fix kartu anomali**: komponen `AnomalyTxCard` baru untuk unmatched `isAnomaly` (border-rose + badge ANOMALI + `suggestion.reason` + tombol 1-klik `{getCategoryLabel} · {impactLabel}`); `RoutineCard` terima prop `selected` untuk highlight manual pair.
+- [x] **Cermin Saldo**: baris Jurnal Penyesuaian pakai `data.journals.isDoubleEntryBalanced` (→ "Debit = Kredit" / "Tidak Seimbang"), bukan `s.isBalanced`.
+- [x] **Tombol bulk akurat**: `smartRoutineItems` (useMemo, sug ≠ null & !isAnomaly) dipakai konsisten untuk syarat `>= 2`, label jumlah, & payload `applyAllSmart`.
+- [x] **Manual pair UX**: floating pill saat 1 sisi terpilih ("1 transaksi [Bank/Buku] terpilih — pilih pasangan di sisi lawan" + Batal); ring highlight indigo pada kartu terpilih; pilihan `<select>` Kesalahan Buku/Bank saat `manualDiff ≠ 0`.
+- [x] **AnomalyCard (DISCREPANCY_MATCH)**: tampilkan `match.reasons`, tombol `Tolak` (REJECT), input akun lawan opsional saat `faultSide === BOOK`.
+- [x] **AdjustmentList**: klik "Batalkan" pada penyesuaian dengan `matchPairId` memanggil `api.deleteMatch` (unmatch + hapus adj) — tak menyisakan DISCREPANCY_MATCH tanpa koreksi.
+- [x] **Backend bulk route**: urutan cek 422 (validation, transaksi bukan milik sesi) SEBELUM 409 (eligibility).
+- [x] **README + PROGRESS** disegarkan: 14 REST endpoint, 2-Tab Inbox Zero + Cermin Saldo, deteksi anomali Double Charge & Transposition Error, 107 test.
+- [x] Gate hijau: tsc 0 / lint 0 / test 107/107 / build 17 route.
+
 ## Redesign UX 2-Tab + Inbox Zero + Cermin Saldo (Gemini audit #3)
 - [x] **Fix PDF**: `bankRows` 3 kolom penuh (nominal tak bergeser); posisi blok tanda tangan dinamis dari `lastAutoTable.finalY` (auto addPage bila muat); footer status dipindah ke paling akhir (tak menabrak jurnal).
 - [x] **Helper `adjustments.ts`**: `BANK_CATEGORIES`, `POSITIVE_CATEGORIES`, `defaultContraAccount`, `buildAdjustmentFields`, `getAdjustmentImpactLabel` terpusat (Zero Drift) — dipakai POST/PATCH/bulk adjustments.
