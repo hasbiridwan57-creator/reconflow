@@ -54,12 +54,13 @@ export function parseIndonesianCurrency(input: string | number | null | undefine
   const integerPart = s.replace(/[.,]/g, "");
   const digits = integerPart.replace(/-/g, "");
 
-  let value = digits === "" ? 0 : parseInt(digits, 10);
+  // Guard NaN: tidak ada digit sama sekali (mis. "Rp .", "Rp -") -> 0.
+  if (digits === "") return 0;
+
+  let value = parseInt(digits, 10);
   if (decimals !== "") {
     // Ambil 1 digit desimal pertama (Rupiah tanpa sen, dibulatkan).
     value = parseInt(digits + decimals[0], 10) / 10;
-  } else {
-    value = parseInt(digits, 10);
   }
   value = Math.round(value);
 
@@ -94,11 +95,14 @@ export function parseFlexibleDate(input: string | null | undefined): string | nu
   return null;
 }
 
-function toIso(y: string, mo: string, d: string): string {
+function toIso(y: string, mo: string, d: string): string | null {
   const year = parseInt(y, 10);
   const month = parseInt(mo, 10);
   const day = parseInt(d, 10);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return `${year}-${pad(month)}-${pad(day)}`;
+  if (month < 1 || month > 12 || day < 1) return null;
+  // Validasi kalender nyata (mis. 2026-02-31 tidak valid).
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day > daysInMonth) return null;
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 

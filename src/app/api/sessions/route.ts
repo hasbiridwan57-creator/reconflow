@@ -20,27 +20,43 @@ export async function GET(request: Request) {
       where,
       orderBy: { updatedAt: "desc" },
       include: {
-        transactions: { select: { id: true } },
-        matches: { select: { isConfirmed: true, status: true } },
-        adjustments: { select: { id: true } },
+        transactions: { select: { id: true, direction: true } },
+        matches: { select: { bankTxId: true, bookTxId: true, isConfirmed: true } },
+        adjustments: { select: { transactionId: true, side: true, signedAmount: true } },
       },
     });
 
-    const list = sessions.map((s) => ({
-      id: s.id,
-      companyName: s.companyName,
-      bankAccountName: s.bankAccountName,
-      periodLabel: s.periodLabel,
-      periodEndDate: s.periodEndDate,
-      status: s.status,
-      demoScenarioKey: s.demoScenarioKey,
-      endingBankBalance: s.endingBankBalance,
-      endingBookBalance: s.endingBookBalance,
-      transactionCount: s.transactions.length,
-      matchRate: s.transactions.length > 0 ? Math.round((s.matches.filter((m) => m.isConfirmed).length * 2 / s.transactions.length) * 100) : 0,
-      unclassifiedCount: s.transactions.length - s.adjustments.length,
-      updatedAt: s.updatedAt.toISOString(),
-    }));
+    const list = sessions.map((s) => {
+      const transactionCount = s.transactions.length;
+      const confirmedMatches = s.matches.filter((m) => m.isConfirmed).length;
+      const matchRate = transactionCount > 0 ? (confirmedMatches * 2) / transactionCount : 0;
+      // Transaksi belum diklasifikasi = belum termatch & belum punya adjustment.
+      const matchedTxIds = new Set(s.matches.filter((m) => m.isConfirmed).flatMap((m) => [m.bankTxId, m.bookTxId]));
+      const unclassifiedCount = transactionCount - matchedTxIds.size - s.adjustments.length;
+      // Adjusted variance = adjustedBank - adjustedBook (arah IN/OUT-aware).
+      const dirOf = (txId: string | null) =>
+        txId ? s.transactions.find((t) => t.id === txId)?.direction ?? "OUT" : "OUT";
+      const sumWithSign = (adjList: typeof s.adjustments) =>
+        adjList.reduce((sum, a) => sum + (dirOf(a.transactionId) === "IN" ? -a.signedAmount : a.signedAmount), 0);
+      const adjustedBank = s.endingBankBalance + sumWithSign(s.adjustments.filter((a) => a.side === "BANK"));
+      const adjustedBook = s.endingBookBalance + sumWithSign(s.adjustments.filter((a) => a.side === "BOOK"));
+      return {
+        id: s.id,
+        companyName: s.companyName,
+        bankAccountName: s.bankAccountName,
+        periodLabel: s.periodLabel,
+        periodEndDate: s.periodEndDate,
+        status: s.status,
+        demoScenarioKey: s.demoScenarioKey,
+        endingBankBalance: s.endingBankBalance,
+        endingBookBalance: s.endingBookBalance,
+        transactionCount,
+        matchRate,
+        unclassifiedCount,
+        variance: adjustedBank - adjustedBook,
+        updatedAt: s.updatedAt.toISOString(),
+      };
+    });
 
     return success(list);
   } catch (error) {

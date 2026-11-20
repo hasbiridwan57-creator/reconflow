@@ -1,7 +1,7 @@
 import { db as prisma } from "@/lib/db";
 import { success, handleError } from "@/lib/api";
 import { MatchingConfigSchema } from "@/lib/schemas/reconciliation";
-import { getHydratedSession, logAudit, runAndPersistAutoMatch, notFoundResponse } from "@/lib/session";
+import { getHydratedSession, logAudit, runAndPersistAutoMatch, notFoundResponse, assertNotFinalized } from "@/lib/session";
 
 /** POST /api/sessions/[id]/match — re-run 3-Pass matcher (spec §7 endpoint 8). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -9,6 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const session = await prisma.reconciliationSession.findUnique({ where: { id } });
     if (!session) return notFoundResponse("Sesi");
+    await assertNotFinalized(id);
 
     // Baca body opsional (config). Jika kosong, pakai config tersimpan.
     let config = {

@@ -1,5 +1,7 @@
 /**
- * Report components: AdjustingJournalTable, AuditLogTimeline, ExportSignoffModal.
+ * Report components: AdjustingJournalTable, AuditLogTimeline, ExportActionBar.
+ * Gemini audit: inline edit COA hanya baris akun lawan (Kas di Bank read-only),
+ * ExportActionBar tidak memanggil updateSession saat FINALIZED.
  */
 "use client";
 
@@ -12,8 +14,8 @@ import { FileText, FileSpreadsheet, Lock, Clock } from "lucide-react";
 /* ---------- AdjustingJournalTable ---------- */
 export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: () => void }) {
   const j = data.journals;
-  // Map adjustmentId -> adjustment (untuk inline edit COA).
   const adjById = new Map(data.adjustments.map((a) => [a.id, a]));
+  const finalized = data.session.status === "FINALIZED";
 
   async function updateContra(adjId: string, contraAccountName: string) {
     try {
@@ -44,24 +46,31 @@ export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessi
           <tbody className="divide-y divide-slate-100">
             {j.entries.map((e) => {
               const adj = adjById.get(e.adjustmentId);
-              return e.lines.map((l, idx) => (
-                <tr key={`${e.adjustmentId}-${idx}`}>
-                  <td className="px-4 py-2">
-                    {adj ? (
-                      <input
-                        defaultValue={l.accountName}
-                        onBlur={(ev) => { if (ev.target.value !== l.accountName) updateContra(adj.id, ev.target.value); }}
-                        className="w-full rounded border border-transparent px-2 py-1 text-sm outline-none hover:border-slate-200 focus:border-indigo-500"
-                      />
-                    ) : (
-                      <span className="px-2 py-1 text-sm">{l.accountName}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{idx === 0 ? e.description : ""}</td>
-                  <td className="px-4 py-2 text-right font-mono tabular-nums">{l.debit !== 0 ? formatIDR(l.debit) : ""}</td>
-                  <td className="px-4 py-2 text-right font-mono tabular-nums">{l.credit !== 0 ? formatIDR(l.credit) : ""}</td>
-                </tr>
-              ));
+              return e.lines.map((l, idx) => {
+                // Hanya baris akun lawan (bukan "Kas di Bank") yang bisa diedit inline.
+                const isContra = l.accountName !== "Kas di Bank";
+                const editable = adj && isContra && !finalized;
+                return (
+                  <tr key={`${e.adjustmentId}-${idx}-${l.accountName}`}>
+                    <td className="px-4 py-2">
+                      {editable ? (
+                        <input
+                          key={`${e.adjustmentId}-${idx}-${l.accountName}`}
+                          defaultValue={l.accountName}
+                          onBlur={(ev) => { if (ev.target.value !== l.accountName) updateContra(adj.id, ev.target.value); }}
+                          disabled={finalized}
+                          className="w-full rounded border border-transparent px-2 py-1 text-sm outline-none hover:border-slate-200 focus:border-indigo-500 disabled:bg-slate-50"
+                        />
+                      ) : (
+                        <span className="px-2 py-1 text-sm font-medium">{l.accountName}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-slate-500">{idx === 0 ? e.description : ""}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{l.debit !== 0 ? formatIDR(l.debit) : ""}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{l.credit !== 0 ? formatIDR(l.credit) : ""}</td>
+                  </tr>
+                );
+              });
             })}
           </tbody>
           <tfoot className="border-t-2 border-slate-900 bg-slate-50">
@@ -105,7 +114,7 @@ export function AuditLogTimeline({ data }: { data: HydratedSessionResponse }) {
   );
 }
 
-/* ---------- ExportSignoffModal + Action Bar ---------- */
+/* ---------- ExportActionBar ---------- */
 export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: () => void }) {
   const [open, setOpen] = useState(false);
   const [preparedBy, setPreparedBy] = useState(data.session.preparedBy);
@@ -115,8 +124,11 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
 
   async function doExportPdf() {
     try {
-      await api.updateSession(data.session.id, { preparedBy, reviewedBy });
-      onRefresh();
+      // FINALIZED: JANGAN updateSession (409). Langsung ekspor dengan metadata saat itu.
+      if (!finalized) {
+        await api.updateSession(data.session.id, { preparedBy, reviewedBy });
+        onRefresh();
+      }
       window.location.href = `/api/sessions/${data.session.id}/export/pdf`;
       setOpen(false);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }

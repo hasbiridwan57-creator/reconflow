@@ -18,8 +18,8 @@ export interface DemoScenario {
 }
 
 export const DEFAULT_MATCHING_CONFIG: MatchingConfig = {
-  dateToleranceDays: 5,
-  amountToleranceRupiah: 100000,
+  dateToleranceDays: 3,
+  amountToleranceRupiah: 0,
   minFuzzyScore: 0.35,
   detectTransposition: true,
 };

@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
-          <div className="ml-auto text-xs text-slate-400">Fullstack Audit-Ready · SQLite/Prisma</div>
+          <div className="ml-auto"><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600">Audit-Ready Workspace</span></div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>

@@ -1,6 +1,6 @@
 /**
  * Halaman /workspace/[id] — 4-Step Guided Reconciliation Workspace.
- * Lihat RECONFLOW_MASTER_SPEC.md §10.2 Halaman 3.
+ * Gemini audit: tab default = Matching Workbench; urutan step intuitif.
  */
 "use client";
 
@@ -10,15 +10,17 @@ import { api } from "@/lib/api/client";
 import type { HydratedSessionResponse } from "@/lib/session";
 import { AppShell } from "@/components/layout/AppShell";
 import { LiveReconStickyBar } from "@/components/layout/LiveReconStickyBar";
-import { MatchingControlsBar, KpiSummaryGrid, SuggestedReviewTab, UnmatchedSplitTab, ConfirmedMatchesTab, ReconMatrixCard, ReconWaterfallChart } from "@/components/workbench/WorkbenchComponents";
+import { MatchingControlsBar, KpiSummaryGrid, MatchingWorkbench, ReconMatrixCard, ReconWaterfallChart } from "@/components/workbench/WorkbenchComponents";
 import { AdjustingJournalTable, AuditLogTimeline, ExportActionBar } from "@/components/report/ReportComponents";
 
-const STEPS = ["Ringkasan & Konfigurasi", "Matching Workbench", "Matriks & Waterfall", "Jurnal, Audit & Ekspor"] as const;
+// Urutan step (Gemini #8): 1=Matching Workbench (default), 2=Matriks & Waterfall,
+// 3=Jurnal, Audit & Ekspor, 4=Konfigurasi & Info Sesi.
+const STEPS = ["Matching Workbench", "Matriks & Waterfall", "Jurnal, Audit & Ekspor", "Konfigurasi & Info Sesi"] as const;
 
 export default function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<HydratedSessionResponse | null>(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0); // default = Matching Workbench
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -72,6 +74,28 @@ export default function WorkspacePage() {
       {/* Step content */}
       {step === 0 && (
         <div className="space-y-6">
+          <KpiSummaryGrid data={data} />
+          <MatchingWorkbench data={data} onRefresh={refresh} />
+        </div>
+      )}
+
+      {step === 1 && (
+        <div className="space-y-6">
+          <ReconMatrixCard data={data} />
+          <ReconWaterfallChart data={data} />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="space-y-6">
+          <AdjustingJournalTable data={data} onRefresh={refresh} />
+          <AuditLogTimeline data={data} />
+          <ExportActionBar data={data} onRefresh={refresh} />
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h3 className="mb-3 text-sm font-semibold text-slate-900">Metadata Sesi</h3>
             <div className="grid gap-4 md:grid-cols-3">
@@ -91,41 +115,6 @@ export default function WorkspacePage() {
             </div>
           </div>
           <MatchingControlsBar data={data} onRefresh={refresh} />
-        </div>
-      )}
-
-      {step === 1 && (
-        <div className="space-y-6">
-          <KpiSummaryGrid data={data} />
-          <div className="space-y-6">
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-slate-900">Perlu Konfirmasi ({s.pendingSuggestedCount})</h3>
-              <SuggestedReviewTab data={data} onRefresh={refresh} />
-            </div>
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-slate-900">Belum Cocok ({s.unclassifiedCount})</h3>
-              <UnmatchedSplitTab data={data} onRefresh={refresh} />
-            </div>
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-slate-900">Terkonfirmasi ({data.matches.filter(m => m.isConfirmed).length})</h3>
-              <ConfirmedMatchesTab data={data} onRefresh={refresh} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="space-y-6">
-          <ReconMatrixCard data={data} />
-          <ReconWaterfallChart data={data} />
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="space-y-6">
-          <AdjustingJournalTable data={data} onRefresh={refresh} />
-          <AuditLogTimeline data={data} />
-          <ExportActionBar data={data} onRefresh={refresh} />
         </div>
       )}
     </AppShell>

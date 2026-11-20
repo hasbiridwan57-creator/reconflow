@@ -5,6 +5,7 @@
  */
 import { db as prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { conflict } from "@/lib/api";
 import type { MatchingConfig, NormalizedTransactionInput } from "@/lib/schemas/reconciliation";
 import type {
   Transaction,
@@ -257,6 +258,22 @@ export function notFoundResponse(entity: string): NextResponse {
     { error: { code: "NOT_FOUND", message: `${entity} tidak ditemukan.` } },
     { status: 404 },
   );
+}
+
+/**
+ * Guard mutasi sesi FINALIZED: lempar ApiError CONFLICT 409
+ * (ditangkap handleError -> NextResponse 409).
+ * Panggil SETELAH cek not-found di route. Dipakai di seluruh endpoint mutasi
+ * agar sesi terkunci tak bisa diubah (spec §6 + Gemini audit #3).
+ */
+export async function assertNotFinalized(sessionId: string): Promise<void> {
+  const session = await prisma.reconciliationSession.findUnique({
+    where: { id: sessionId },
+    select: { status: true },
+  });
+  if (session?.status === "FINALIZED") {
+    conflict("Sesi sudah FINALIZED. Buka kembali (REOPEN) terlebih dahulu.");
+  }
 }
 
 /** Catat AuditLog (spec §6: setiap mutasi WAJIB audit trail). */

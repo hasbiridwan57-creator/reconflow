@@ -1,7 +1,7 @@
 import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { CreateAdjustmentSchema, AdjustmentCategorySchema } from "@/lib/schemas/reconciliation";
-import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse } from "@/lib/session";
+import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
 
 // Tabel 3.3: side diturunkan dari category (BANK vs BOOK).
 const BANK_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "OUTSTANDING_CHECK", "BANK_ERROR_ADD", "BANK_ERROR_DEDUCT"]);
@@ -25,6 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const session = await prisma.reconciliationSession.findUnique({ where: { id } });
     if (!session) return notFoundResponse("Sesi");
+    await assertNotFinalized(id);
 
     const categoryEnum = AdjustmentCategorySchema.parse(category);
     const side = BANK_CATEGORIES.has(categoryEnum) ? "BANK" : "BOOK";

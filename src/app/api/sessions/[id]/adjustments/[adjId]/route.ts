@@ -1,7 +1,7 @@
 import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { UpdateAdjustmentSchema, AdjustmentCategorySchema } from "@/lib/schemas/reconciliation";
-import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse } from "@/lib/session";
+import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
 
 const BANK_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "OUTSTANDING_CHECK", "BANK_ERROR_ADD", "BANK_ERROR_DEDUCT"]);
 const POSITIVE_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "BANK_ERROR_ADD", "INTEREST_INCOME", "UNRECORDED_RECEIPT", "BOOK_ERROR_ADD"]);
@@ -10,6 +10,7 @@ const POSITIVE_CATEGORIES = new Set(["DEPOSIT_IN_TRANSIT", "BANK_ERROR_ADD", "IN
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; adjId: string }> }) {
   try {
     const { id, adjId } = await params;
+    await assertNotFinalized(id);
     const body = await request.json();
     const parsed = UpdateAdjustmentSchema.safeParse(body);
     if (!parsed.success) {
@@ -47,6 +48,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; adjId: string }> }) {
   try {
     const { id, adjId } = await params;
+    await assertNotFinalized(id);
     const adj = await prisma.classifiedAdjustment.findUnique({ where: { id: adjId } });
     if (!adj || adj.sessionId !== id) return notFoundResponse("Penyesuaian");
 
