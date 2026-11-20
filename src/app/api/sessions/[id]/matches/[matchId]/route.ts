@@ -30,30 +30,17 @@ export async function PATCH(
       await prisma.matchPair.update({ where: { id: matchId }, data: { isConfirmed: true } });
 
       // Jika DISCREPANCY_MATCH dengan selisih != 0, buat ClassifiedAdjustment.
+      // Konsisten dengan ground truth tests/helpers/scenarios.ts:
+      //   faultSide BOOK  → side=BOOK, signedAmount = -amountDiff
+      //   faultSide BANK  → side=BANK, signedAmount = +amountDiff (mirror)
       if (match.status === "DISCREPANCY_MATCH" && match.amountDiff !== 0) {
         const faultSide = discrepancyResolution?.faultSide ?? "BOOK";
-        const absDiff = Math.abs(match.amountDiff);
-        // bank - book > 0 => bank lebih besar. Koreksi ke sisi fault.
-        // Sisi BANK: BOOK_ERROR_ADD (+) jika bank besar; Sisi BOOK: BOOK_ERROR_ADD (+) jika book kecil dst.
-        let category: string;
-        let signedAmount: number;
-        if (match.amountDiff > 0) {
-          // Bank lebih besar dari buku.
-          category = "BOOK_ERROR_ADD";
-          signedAmount = faultSide === "BOOK" ? absDiff : -absDiff;
-          if (faultSide === "BANK") {
-            category = "BANK_ERROR_DEDUCT";
-            signedAmount = -absDiff;
-          }
-        } else {
-          // Buku lebih besar dari bank.
-          category = "BOOK_ERROR_DEDUCT";
-          signedAmount = faultSide === "BOOK" ? -absDiff : absDiff;
-          if (faultSide === "BANK") {
-            category = "BANK_ERROR_ADD";
-            signedAmount = absDiff;
-          }
-        }
+        const isBook = faultSide === "BOOK";
+        const signedAmount = isBook ? -match.amountDiff : match.amountDiff;
+        const category =
+          (isBook ? match.amountDiff < 0 : match.amountDiff > 0)
+            ? (isBook ? "BOOK_ERROR_DEDUCT" : "BANK_ERROR_ADD")
+            : (isBook ? "BOOK_ERROR_ADD" : "BANK_ERROR_DEDUCT");
 
         await prisma.classifiedAdjustment.create({
           data: {

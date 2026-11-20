@@ -1,36 +1,109 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReconFlow
 
-## Getting Started
+**End-to-End Bank Reconciliation, Automated Matching & Audit-Ready Reporting Workspace.**
 
-First, run the development server:
+ReconFlow adalah aplikasi web fullstack B2B-grade yang menyatukan rekonsiliasi bank berbasis 3-Pass matching engine, jurnal penyesuaian otomatis, audit trail lengkap, dan laporan formal (PDF & Excel) — semuanya deterministik dan siap audit.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+![Next.js](https://img.shields.io/badge/Next.js-15-000?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript) ![Prisma](https://img.shields.io/badge/Prisma-6-2d3748?logo=prisma)
+
+## Fitur Utama
+
+- **Intake CSV dual-source** — unggah mutasi rekening koran bank & buku kas dengan mapping kolom fleksibel (deteksi header otomatis).
+- **3-Pass Matching Engine** (Priority Greedy Bipartite):
+  1. *Exact match* — tanggal, nominal, referensi/deskripsi identik.
+  2. *Fuzzy match* — skor kemiripan teks 0,6·Jaccard + 0,4·Dice + token referensi.
+  3. *Transposition detection* — deteksi salah ketik nominal (kelipatan 9) → `DISCREPANCY_MATCH`.
+- **Klasifikasi penyesuaian** dua sisi (BANK / BOOK) dengan kategori akuntansi formal (NSF check, bank fee, deposit in transit, outstanding check, dll).
+- **Auto Adjusting Journal Entries** — hanya penyesuaian sisi buku yang menjurnal; dijamin debit = kredit.
+- **Jembatan saldo (reconciliation bridge)** — saldo bank & buku disesuaikan **harus bertemu di variance Rp 0**.
+- **Audit trail** tiap mutasi (create/approve/klasifikasi/finalize) terekam permanen.
+- **Ekspor laporan formal** — PDF (jsPDF) & Excel 4-sheet (ExcelJS).
+- **Finalisasi & kunci sesi** dengan blok tanda tangan Prepared by / Reviewed by.
+
+## Arsitektur
+
+```
+src/
+├── app/
+│   ├── api/                    # 16 REST endpoint (App Router route handlers)
+│   ├── page.tsx                # Beranda (demo cards + sesi terbaru)
+│   ├── new/                    # Wizard intake CSV + column mapper
+│   ├── workspace/[id]/         # Workspace rekonsiliasi 4 langkah
+│   └── history/                # Arsip sesi + filter status
+├── components/                 # UI (AppShell, workbench, laporan)
+├── lib/
+│   ├── engine/                 # parser, textSimilarity, matcher, calculator, journals
+│   ├── schemas/                # Zod SSOT (Zero Drift frontend↔backend)
+│   ├── export/                 # pdfGenerator, excelGenerator
+│   ├── session.ts              # Service layer (hydration + persistence)
+│   └── db.ts                   # Prisma singleton
+└── prisma/schema.prisma        # Skema DB
+tests/                          # Vitest (73 test, termasuk 3 skenario e2e = Rp 0)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Prinsip desain:** satu sumber kebenaran (SSOT) — skema Zod dipakai bersama frontend & backend; seluruh nominal uang disimpan & dihitung sebagai **integer Rupiah** (tanpa float) untuk akurasi akuntansi.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Teknologi
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Lapisan | Teknologi |
+|---|---|
+| Framework | Next.js 15 (App Router, Turbopack), React 19, TypeScript |
+| Styling | Tailwind CSS 4, font Inter + JetBrains Mono (angka `tabular-nums`) |
+| Database | Prisma ORM (SQLite dev, PostgreSQL-ready) |
+| Validasi | Zod 4 (shared schemas) |
+| Chart/Tabel | Recharts, TanStack Table v8 |
+| Ekspor | jsPDF + autotable, ExcelJS |
+| Testing | Vitest 3 |
 
-## Learn More
+## Menjalankan Lokal
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# 1. Install dependencies
+npm install
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 2. Inisialisasi database (SQLite) + generate Prisma Client
+npx prisma generate
+npx prisma db push
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# 3. Jalankan development server
+npm run dev
+# buka http://localhost:3000
 
-## Deploy on Vercel
+# 4. (Opsional) Verifikasi kualitas
+npm run test    # 73 test, 3 skenario demo = variance Rp 0
+npm run build   # build produksi
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Pada halaman beranda, klik salah satu **3 kartu skenario demo** (UMKM, E-Commerce, Audit Perusahaan) untuk langsung melihat alur lengkap: auto-match → konfirmasi → klasifikasi → jembatan saldo Rp 0 → jurnal → ekspor PDF/Excel.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Perintah
+
+| Perintah | Fungsi |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` | Build produksi |
+| `npm run start` | Jalankan build produksi |
+| `npm run test` | Jalankan seluruh test (Vitest) |
+| `npm run db:push` | Sinkronkan skema Prisma ke DB |
+| `npm run lint` | ESLint |
+
+## Migrasi ke PostgreSQL (Neon) untuk Produksi
+
+Skema & seluruh query Prisma sudah **100% PostgreSQL-compatible**. Untuk deploy ke Vercel + Neon:
+
+1. Buat database Neon dan salin connection string.
+2. Ubah `DATABASE_URL` di environment Vercel:
+   ```
+   DATABASE_URL="postgresql://user:pass@host/db?sslmode=require"
+   ```
+3. Ganti `provider` di `prisma/schema.prisma` dari `sqlite` → `postgresql`.
+4. Jalankan migrasi:
+   ```bash
+   npx prisma migrate dev --name init   # atau prisma db push saat deploy
+   ```
+
+Tidak ada perubahan kode aplikasi yang diperlukan — Prisma menangani perbedaan dialek SQL.
+
+## Standar Kualitas
+
+Setiap fase melewati gate wajib: `tsc --noEmit` (0 error) → `eslint --max-warnings=0` → `vitest` (100% pass) → `next build` (sukses). Detail audit tiap fase tercatat di [`PROGRESS.md`](./PROGRESS.md). Spesifikasi teknis lengkap di [`RECONFLOW_MASTER_SPEC.md`](./RECONFLOW_MASTER_SPEC.md).

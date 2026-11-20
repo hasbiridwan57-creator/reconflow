@@ -50,18 +50,42 @@
 6. Hapus konstanta `CATEGORY_SIGN` yang tak terpakai (warning lint `--max-warnings=0`).
 
 ## Fase 3 — Fullstack REST API & Export Engines
-- [ ] `src/lib/export/pdfGenerator.ts`
-- [ ] `src/lib/export/excelGenerator.ts`
-- [ ] 16 endpoint REST API + Zod + transaksi atomik + AuditLog
-- [ ] `src/lib/api/client.ts` + `response.ts`
-- [ ] Gate: tsc 0 error
+- [x] `src/lib/session.ts` (service layer: getHydratedSession, runAndPersistAutoMatch, logAudit, notFoundResponse, toMatchCandidate, toPrismaTxInputs)
+- [x] `src/lib/api.ts` (success/failure/handleError → kontrak `{ data }` / `{ error: { code, message } }`)
+- [x] `src/lib/export/pdfGenerator.ts` (jsPDF + autoTable, Formal Financial Report + jembatan)
+- [x] `src/lib/export/excelGenerator.ts` (ExcelJS 4-sheet: Ringkasan/Bank/Buku/Jurnal)
+- [x] 16 endpoint REST lengkap (health, sessions CRUD, demo, match, matches approve/manual, adjustments CRUD, finalize, export PDF/Excel)
+- [x] Zod validation per endpoint + transaksi atomik + AuditLog tiap mutasi
+- [x] Gate: tsc 0 error, eslint --max-warnings=0 bersih
+- [x] Gate: build sukses (16 route terdaftar)
+- [x] Smoke test API runtime via `next start` (health, create demo, get session, approve, klasifikasi, finalize, export PDF `%PDF` / Excel `PK`)
+
+### Temuan & Perbaikan Fase 3 (audit mandiri)
+1. **Type-safety `notFoundResponse`:** semula return `Response` polos, memicu error build Next 15 (bentrok `NextResponse`). Diubah return `NextResponse.json`.
+2. **`conflict()` helper:** diubah jadi throw `ApiError` (bukan return) agar tidak bocor ke type-validator handler Next 15; pemakaian di route dikonversi ke `failure(...,409)`.
+3. **Enum Prisma:** field `category` Prisma bertipe `String` → dicast ke union `AdjustmentCategory` di DTO agar 100% type-safe.
+4. **normalisasi CSV:** helper `toPrismaTxInputs` terpusat di session.ts menambahkan `normalizedDesc` (wajib Prisma) dari deskripsi, satu sumber untuk endpoint create & demo.
+5. **Versi libs ekspor:** jspdf & autotable major terbaru (4/5) import API berubah → dikunci ke jspdf@^2 (2.5.2) + jspdf-autotable@^3 (3.8.4) yang stabil; exceljs@4.4.0.
 
 ## Fase 4 — Enterprise UI/UX & 4-Step Workspace
-- [ ] AppShell, LiveReconStickyBar
-- [ ] Halaman `/`, `/new`, `/workspace/[id]` (4 step), `/history`
-- [ ] Gate: tsc 0 error, build sukses, responsif, mono tabular-nums
+- [x] `AppShell` (sidebar + topbar), `LiveReconStickyBar` (badge BALANCED/UNBALANCED)
+- [x] Halaman `/` (beranda + 3 kartu demo + sesi terbaru)
+- [x] Halaman `/new` (wizard dual-CSV intake + column mapper)
+- [x] Halaman `/workspace/[id]` (4-step: Ringkasan&Konfigurasi / Matching Workbench / Matriks&Waterfall / Jurnal&Audit&Ekspor)
+- [x] Halaman `/history` (arsip + TanStack Table filter status)
+- [x] Komponen workbench (KpiGrid, ControlsBar, SuggestedReview, UnmatchedSplit, ConfirmedMatches, ReconMatrix, Waterfall)
+- [x] Komponen laporan (AdjustingJournalTable inline-edit COA, AuditLogTimeline, ExportActionBar + signoff modal)
+- [x] Gate: tsc 0 error, eslint --max-warnings=0, build sukses
+- [x] Semua nominal & persen pakai `font-mono tabular-nums text-right`
+
+### Temuan & Perbaikan Fase 4 (audit mandiri)
+1. **AppShell SSR error:** `usePathname` dipakai tanpa `"use client"` → build gagal. Ditambahkan direktif `"use client"`.
+2. **5 warning lint** (unused vars, `?:` expression, useMemo deps) → dibersihkan agar `--max-warnings=0` lolos; `handleDelete` dibungkus `useCallback`.
 
 ## Fase 5 — Final Audit & Production Verification Gate
-- [ ] tsc / lint / test / build hijau
-- [ ] Smoke test runtime (demo audit → GET session → export PDF/Excel 200)
-- [ ] README.md profesional (fitur, arsitektur, run lokal, switch Neon)
+- [x] tsc / lint / test / build hijau
+- [x] Smoke test runtime end-to-end ketiga skenario demo via API hidup: approve → klasifikasi (kunci jawaban §11) → **variance Rp 0 + isBalanced true + jurnal debit=kredit** → finalize → export PDF/Excel valid
+- [x] README.md profesional (fitur, arsitektur, run lokal, switch Neon)
+
+### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
+1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
