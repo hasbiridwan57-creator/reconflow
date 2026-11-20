@@ -1,6 +1,7 @@
 /**
- * Halaman /workspace/[id] — 2-Tab Workspace (Meja Rekonsiliasi + Laporan & Ekspor)
- * + Settings Drawer (Metadata + Matching Controls).
+ * Halaman /workspace/[id] — Executive Workspace (Bright Modern Treasury).
+ * Header ringkas + 6-Metric KPI Strip + 2 underline tabs (Meja Rekonsiliasi /
+ * Laporan & Ledger Audit) + Settings Drawer (Metadata + Matching Controls).
  */
 "use client";
 
@@ -12,7 +13,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MatchingControlsBar, ReconMatrixCard, ReconWaterfallChart } from "@/components/workbench/WorkbenchComponents";
 import { ReconciliationDesk } from "@/components/workbench/ReconciliationDesk";
 import { AdjustingJournalTable, AuditLogTimeline, ExportActionBar } from "@/components/report/ReportComponents";
-import { Settings, X } from "lucide-react";
+import { LedgerExplorer } from "@/components/report/LedgerExplorer";
+import { Settings, X, FileText, FileSpreadsheet, CheckCircle2, ListChecks } from "lucide-react";
+import { formatIDR, formatPercent } from "@/lib/format";
 
 export default function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
@@ -35,48 +38,116 @@ export default function WorkspacePage() {
   if (!data) return <AppShell><div className="text-sm text-slate-500">Memuat sesi...</div></AppShell>;
 
   const session = data.session;
+  const s = data.summary;
+  const confirmedCount = data.matches.filter((m) => m.isConfirmed).length;
+  const pendingAction = s.pendingSuggestedCount + s.unclassifiedCount;
+  const itemsRemaining = pendingAction + data.unmatchedBank.filter((t) => !t.adjustmentId).length + data.unmatchedBook.filter((t) => !t.adjustmentId).length;
+
+  const statusBadge = {
+    DRAFT: "bg-amber-50 text-amber-700 border-amber-200",
+    BALANCED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    FINALIZED: "bg-teal-50 text-teal-700 border-teal-200",
+  }[session.status] ?? "bg-slate-50 text-slate-600 border-slate-200";
+
+  const metrics = [
+    { label: "Mutasi Bank", value: `${data.bankTransactions.length}`, sub: "rekening koran", cls: "text-slate-900" },
+    { label: "Mutasi Buku", value: `${data.bookTransactions.length}`, sub: "buku kas / GL", cls: "text-slate-900" },
+    { label: "Match Rate", value: formatPercent(s.matchRate), sub: `${confirmedCount} pasang cocok`, cls: "text-slate-900" },
+    { label: "Perlu Tindakan", value: `${pendingAction}`, sub: "item tersisa", cls: pendingAction > 0 ? "text-amber-600" : "text-emerald-600" },
+    { label: "Jurnal Penyesuaian", value: `${data.journals.entries.length} entri`, sub: "Debit = Kredit", cls: "text-emerald-600" },
+    { label: "Check (Selisih)", value: formatIDR(s.variance), sub: s.isBalanced ? "Balanced" : "Belum seimbang", cls: s.variance === 0 ? "text-emerald-600" : "text-rose-600" },
+  ];
 
   return (
     <AppShell>
-      {/* Header sesi + 2 tab + tombol pengaturan */}
-      <div className="mb-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">{session.companyName}</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-              <span>{session.bankAccountName}</span>
-              <span>·</span>
-              <span>{session.periodLabel}</span>
-              {session.demoScenarioKey && (
-                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-600">
-                  Mode Demo: {session.demoScenarioKey}
-                </span>
-              )}
-            </div>
+      {/* Header eksekutif */}
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-xs text-slate-400">Rekening / {session.companyName}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">{session.bankAccountName}</h1>
+            <span className="text-slate-300">·</span>
+            <span className="text-sm text-slate-500">{session.periodLabel}</span>
+            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusBadge}`}>
+              {session.status}
+            </span>
+            {session.demoScenarioKey && (
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                Demo: {session.demoScenarioKey}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-              <button
-                onClick={() => setTab(0)}
-                className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${tab === 0 ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
-              >
-                1. Meja Rekonsiliasi
-              </button>
-              <button
-                onClick={() => setTab(1)}
-                className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${tab === 1 ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
-              >
-                2. Laporan &amp; Ekspor
-              </button>
-            </div>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-              aria-label="Pengaturan"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (session.status === "FINALIZED") {
+                window.location.href = `/api/sessions/${session.id}/export/pdf`;
+              } else {
+                setTab(1); // buka tab laporan untuk isi modal tanda tangan.
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700"
+          >
+            <FileText className="h-3.5 w-3.5" /> Ekspor PDF
+          </button>
+          <a
+            href={`/api/sessions/${session.id}/export/excel`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+          </a>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            aria-label="Pengaturan"
+          >
+            <Settings className="h-3.5 w-3.5" /> Pengaturan
+          </button>
+        </div>
+      </div>
+
+      {/* 6-Metric KPI Strip */}
+      <div className="mb-5 grid grid-cols-2 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white md:grid-cols-3 md:divide-y-0 md:divide-x lg:grid-cols-6">
+        {metrics.map((m) => (
+          <div key={m.label} className="p-3">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{m.label}</div>
+            <div className={`mt-0.5 font-mono text-lg font-semibold tabular-nums ${m.cls}`}>{m.value}</div>
+            <div className="text-[11px] text-slate-400">{m.sub}</div>
           </div>
+        ))}
+      </div>
+
+      {/* Underline Tabs */}
+      <div className="mb-5 border-b border-slate-200">
+        <div className="flex gap-6">
+          <button
+            onClick={() => setTab(0)}
+            className={`-mb-px flex items-center gap-1.5 border-b-2 px-1 pb-2 text-sm transition-colors ${
+              tab === 0
+                ? "border-teal-600 font-semibold text-teal-700"
+                : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <ListChecks className="h-4 w-4" /> 1. Meja Rekonsiliasi
+            {itemsRemaining > 0 ? (
+              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-700">
+                {itemsRemaining}
+              </span>
+            ) : (
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            )}
+          </button>
+          <button
+            onClick={() => setTab(1)}
+            className={`-mb-px border-b-2 px-1 pb-2 text-sm transition-colors ${
+              tab === 1
+                ? "border-teal-600 font-semibold text-teal-700"
+                : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            2. Laporan &amp; Ledger Audit
+          </button>
         </div>
       </div>
 
@@ -86,12 +157,30 @@ export default function WorkspacePage() {
       )}
 
       {tab === 1 && (
-        <div className="space-y-6">
-          <ReconMatrixCard data={data} />
-          <ReconWaterfallChart data={data} />
-          <AdjustingJournalTable data={data} onRefresh={refresh} />
-          <AuditLogTimeline data={data} />
-          <ExportActionBar data={data} onRefresh={refresh} />
+        <div className="space-y-5">
+          {/* Baris 1 — Statement + Waterfall */}
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+            <div className="xl:col-span-7">
+              <ReconMatrixCard data={data} />
+            </div>
+            <div className="xl:col-span-5">
+              <ReconWaterfallChart data={data} />
+            </div>
+          </div>
+          {/* Baris 2 — Ledger Explorer */}
+          <LedgerExplorer data={data} />
+          {/* Baris 3 — Jurnal + Ekspor/Audit */}
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+            <div className="xl:col-span-8">
+              <AdjustingJournalTable data={data} onRefresh={refresh} />
+            </div>
+            <div className="space-y-5 xl:col-span-4">
+              <ExportActionBar data={data} onRefresh={refresh} />
+              <div className="max-h-96 overflow-y-auto">
+                <AuditLogTimeline data={data} />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -63,11 +63,11 @@ function Dropzone({ label, parsed, onFile, template, templateName }: {
     <div className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-900">{label}</h3>
-        <button onClick={() => downloadTemplate(template, templateName)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+        <button onClick={() => downloadTemplate(template, templateName)} className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
           <FileDown className="h-3.5 w-3.5" /> Template
         </button>
       </div>
-      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 py-8 transition hover:border-indigo-400 hover:bg-slate-50">
+      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 py-8 transition hover:border-teal-400 hover:bg-slate-50">
         <Upload className="mb-2 h-6 w-6 text-slate-400" />
         <span className="text-sm text-slate-600">{parsed ? parsed.fileName : "Klik atau tarik file .csv di sini"}</span>
         <input type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
@@ -209,7 +209,7 @@ export default function NewSessionPage() {
                 type={type}
                 value={meta[key]}
                 onChange={(e) => setMeta((m) => ({ ...m, [key]: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
               />
             </label>
           ))}
@@ -220,7 +220,7 @@ export default function NewSessionPage() {
                 type="number"
                 value={meta[key]}
                 onChange={(e) => setMeta((m) => ({ ...m, [key]: Number(e.target.value) }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-right font-mono tabular-nums text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-right font-mono tabular-nums text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
               />
             </label>
           ))}
@@ -260,7 +260,7 @@ export default function NewSessionPage() {
                             <select
                               value={p.mapping[role] ?? ""}
                               onChange={(e) => handleMappingChange(item!.label as "Bank" | "Buku", p, e.target.value || null, role)}
-                              className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500"
+                              className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500"
                             >
                               <option value="">— (abaikan) —</option>
                               {p.headers.map((h) => <option key={h} value={h}>{h}</option>)}
@@ -292,7 +292,7 @@ export default function NewSessionPage() {
       <button
         onClick={handleSubmit}
         disabled={submitting}
-        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
       >
         {submitting ? "Memproses..." : "Proses & Jalankan Auto-Match"}
       </button>

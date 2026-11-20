@@ -118,7 +118,7 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
                   onChange={(e) => setContraAccount(e.target.value)}
                   placeholder="Akun lawan (opsional, mis. Kas Besar)"
                   disabled={loading || finalized}
-                  className="mt-2 w-full max-w-sm rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-50"
+                  className="mt-2 w-full max-w-sm rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500 disabled:bg-slate-50"
                 />
               )}
               <div className="mt-3 flex gap-2">
@@ -179,7 +179,7 @@ function RoutineCard({
   }
 
   return (
-    <div className={`rounded-xl border bg-white p-4 ${selected ? "border-indigo-300 ring-2 ring-indigo-500 bg-indigo-50/40" : "border-slate-200"}`}>
+    <div className={`rounded-xl border bg-white p-4 ${selected ? "border-teal-300 ring-2 ring-teal-500 bg-teal-50/40" : "border-slate-200"}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -196,7 +196,7 @@ function RoutineCard({
           <button
             onClick={() => classify(suggestion.category)}
             disabled={finalized || loading}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+            className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
           >
             ✓ {getCategoryLabel(suggestion.category)} · {suggestion.impactLabel}
           </button>
@@ -205,7 +205,7 @@ function RoutineCard({
           defaultValue=""
           onChange={(e) => e.target.value && classify(e.target.value as AdjustmentCategory)}
           disabled={finalized || loading}
-          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-50"
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500 disabled:bg-slate-50"
         >
           <option value="">Kategori Lain ▾</option>
           {cats.map((c) => (
@@ -214,7 +214,7 @@ function RoutineCard({
             </option>
           ))}
         </select>
-        <button onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-indigo-600 disabled:opacity-50">
+        <button onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-teal-600 disabled:opacity-50">
           <Link2 className="h-3 w-3" /> Pasangkan manual
         </button>
       </div>
@@ -468,7 +468,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       {/* Kolom kiri — Antrean Kerja */}
       <div className="space-y-6 lg:col-span-8">
         {/* Progress bar */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-lg border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-slate-900">
               {Math.min(resolvedTx, totalTx)} dari {totalTx} transaksi beres
@@ -478,7 +478,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
             </span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${resolvedPct}%` }} />
+            <div className="h-full rounded-full bg-teal-600 transition-all" style={{ width: `${resolvedPct}%` }} />
           </div>
         </div>
 
@@ -520,7 +520,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
               <button
                 onClick={approveAll}
                 disabled={finalized}
-                className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                className="rounded-lg bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
               >
                 Setujui Semua Saran ({suggestedPending.length})
               </button>
@@ -538,7 +538,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 <select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as "ALL" | "BANK" | "BOOK")}
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-indigo-500"
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-teal-500"
                 >
                   <option value="ALL">Semua</option>
                   <option value="BANK">Hanya di Bank</option>
@@ -548,7 +548,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                   <button
                     onClick={applyAllSmart}
                     disabled={finalized}
-                    className="flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+                    className="flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-100 disabled:opacity-60"
                   >
                     <Sparkles className="h-3 w-3" /> Terapkan Semua Saran Cerdas ({smartRoutineItems.length})
                   </button>
@@ -587,7 +587,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       {/* Modal manual pair */}
       {/* Floating pill: 1 sisi terpilih */}
       {((selectedBank && !selectedBook) || (!selectedBank && selectedBook)) && (
-        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full border border-indigo-200 bg-white px-4 py-2 shadow-lg">
+        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full border border-teal-200 bg-white px-4 py-2 shadow-lg">
           <span className="text-xs text-slate-700">
             1 transaksi <b>{selectedBank ? "Bank" : "Buku"}</b> terpilih — pilih pasangan di sisi lawan
           </span>
@@ -602,7 +602,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
 
       {/* Modal manual pair: 2 sisi terpilih */}
       {selectedBank && selectedBook && (
-        <div className="fixed bottom-6 left-1/2 z-40 w-[min(92vw,560px)] -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+        <div className="fixed bottom-6 left-1/2 z-40 w-[min(92vw,560px)] -translate-x-1/2 rounded-lg border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] shadow-lg">
           <div className="mb-2 text-sm text-slate-700">2 transaksi terpilih. Pasangkan manual?</div>
           {manualDiff !== 0 && (
             <div className="mb-2 space-y-2">
@@ -613,7 +613,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 value={manualFaultSide}
                 onChange={(e) => setManualFaultSide(e.target.value as "BOOK" | "BANK")}
                 disabled={finalized}
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-50"
+                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500 disabled:bg-slate-50"
               >
                 <option value="BOOK">Kesalahan Buku (Buat Jurnal)</option>
                 <option value="BANK">Kesalahan Bank (Tanpa Jurnal)</option>
@@ -690,7 +690,7 @@ function AnomalyTxCard({
         <button
           onClick={() => classify(suggestion.category)}
           disabled={finalized || loading}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
         >
           ✓ {getCategoryLabel(suggestion.category)} · {suggestion.impactLabel}
         </button>
@@ -698,7 +698,7 @@ function AnomalyTxCard({
           defaultValue=""
           onChange={(e) => e.target.value && classify(e.target.value as AdjustmentCategory)}
           disabled={finalized || loading}
-          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-50"
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500 disabled:bg-slate-50"
         >
           <option value="">Kategori Lain ▾</option>
           {cats.map((c) => (
@@ -733,7 +733,7 @@ function SuggestedCardList({ data, onRefresh, suggestedPending }: { data: Hydrat
   return (
     <div className="space-y-3">
       {suggestedPending.map((m) => (
-        <div key={m.id} className="rounded-xl border border-slate-200 bg-white p-4">
+        <div key={m.id} className="rounded-lg border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-lg bg-sky-50/50 p-3">
               <div className="text-[10px] font-medium uppercase tracking-wide text-sky-600">Data Bank</div>

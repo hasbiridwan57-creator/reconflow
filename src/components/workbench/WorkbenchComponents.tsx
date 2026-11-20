@@ -42,22 +42,22 @@ export function MatchingControlsBar({ data, onRefresh }: { data: HydratedSession
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="rounded-lg border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <h3 className="mb-4 text-sm font-semibold text-slate-900">Konfigurasi Matching Engine</h3>
       <div className="flex flex-wrap items-end gap-6">
         <label className="block">
           <span className="mb-1 block text-xs text-slate-500">Toleransi Tanggal: <b>{days} hari</b></span>
-          <input type="range" min={0} max={14} value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={finalized} className="w-48" />
+          <input type="range" min={0} max={14} value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={finalized} className="w-48 accent-teal-600" />
         </label>
         <label className="block">
           <span className="mb-1 block text-xs text-slate-500">Toleransi Nominal (Rp)</span>
-          <input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} disabled={finalized} className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-right font-mono tabular-nums text-sm outline-none focus:border-indigo-500 disabled:bg-slate-50" />
+          <input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} disabled={finalized} className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-right font-mono tabular-nums text-sm outline-none focus:border-teal-500 disabled:bg-slate-50" />
         </label>
         <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={transposition} onChange={(e) => setTransposition(e.target.checked)} disabled={finalized} />
+          <input type="checkbox" checked={transposition} onChange={(e) => setTransposition(e.target.checked)} disabled={finalized} className="accent-teal-600" />
           Deteksi Transposition Error
         </label>
-        <button onClick={run} disabled={running || finalized} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
+        <button onClick={run} disabled={running || finalized} className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60">
           {running ? "Menjalankan..." : "Jalankan Ulang Auto-Match"}
         </button>
       </div>
@@ -128,56 +128,74 @@ export function ConfirmedMatchesTab({ data, onRefresh }: { data: HydratedSession
   );
 }
 
-/* ---------- ReconMatrixCard ---------- */
+/* ---------- ReconMatrixCard (formal statement terpadu) ---------- */
 export function ReconMatrixCard({ data }: { data: HydratedSessionResponse }) {
   const s = data.summary;
   const bankAdj = data.adjustments.filter((a) => a.side === "BANK");
   const bookAdj = data.adjustments.filter((a) => a.side === "BOOK");
 
-  function renderSide(title: string, start: number, adj: typeof bankAdj, end: number) {
+  function renderSection(
+    title: string,
+    subtitle: string,
+    start: number,
+    adj: typeof bankAdj,
+  ) {
     const additions = adj.filter((a) => a.signedAmount > 0);
     const deductions = adj.filter((a) => a.signedAmount < 0);
     return (
-      <div key={title} className="rounded-xl border border-slate-200 bg-white p-5">
-        <h4 className="mb-3 text-sm font-semibold text-slate-900">{title}</h4>
-        <div className="space-y-1 text-sm">
-          <div className="flex justify-between"><span className="text-slate-600">Saldo akhir</span><span className="font-mono tabular-nums text-right">{formatIDR(start)}</span></div>
-          {additions.length > 0 && <div className="mt-1 text-xs font-medium text-slate-400">Penambahan (+)</div>}
-          {additions.map((a) => (
-            <div key={a.id} className="flex justify-between">
-              <div>
-                <div className="text-sm text-slate-900">{a.description}</div>
-                <div className="text-xs text-slate-400">{getCategoryLabel(a.category)}</div>
-              </div>
-              <span className="font-mono tabular-nums text-right text-emerald-600">{formatIDRAccounting(a.signedAmount)}</span>
-            </div>
-          ))}
-          {deductions.length > 0 && <div className="mt-1 text-xs font-medium text-slate-400">Pengurangan (−)</div>}
-          {deductions.map((a) => (
-            <div key={a.id} className="flex justify-between">
-              <div>
-                <div className="text-sm text-slate-900">{a.description}</div>
-                <div className="text-xs text-slate-400">{getCategoryLabel(a.category)}</div>
-              </div>
-              <span className="font-mono tabular-nums text-right text-rose-600">{formatIDRAccounting(a.signedAmount)}</span>
-            </div>
-          ))}
-          <div className="double-underline mt-2 border-t border-slate-300 pt-2 flex justify-between font-semibold">
-            <span>Saldo Kas yang Benar (Disesuaikan)</span>
-            <span className="font-mono tabular-nums text-right">{formatIDR(end)}</span>
-          </div>
+      <div className="space-y-1 text-sm">
+        <div className="mb-2">
+          <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
+          <p className="text-[11px] text-slate-400">{subtitle}</p>
         </div>
+        <div className="flex justify-between">
+          <span className="text-slate-600">Saldo akhir</span>
+          <span className="font-mono tabular-nums text-right">{formatIDR(start)}</span>
+        </div>
+        {additions.length > 0 && <div className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Penambahan (+)</div>}
+        {additions.map((a) => (
+          <div key={a.id} className="flex justify-between">
+            <div>
+              <div className="text-sm text-slate-900">{a.description}</div>
+              <div className="text-[11px] text-slate-400">{getCategoryLabel(a.category)}</div>
+            </div>
+            <span className="font-mono tabular-nums text-right text-emerald-600">{formatIDRAccounting(a.signedAmount)}</span>
+          </div>
+        ))}
+        {deductions.length > 0 && <div className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pengurangan (−)</div>}
+        {deductions.map((a) => (
+          <div key={a.id} className="flex justify-between">
+            <div>
+              <div className="text-sm text-slate-900">{a.description}</div>
+              <div className="text-[11px] text-slate-400">{getCategoryLabel(a.category)}</div>
+            </div>
+            <span className="font-mono tabular-nums text-right text-rose-600">{formatIDRAccounting(a.signedAmount)}</span>
+          </div>
+        ))}
       </div>
     );
   }
 
+  const balanced = s.variance === 0;
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {renderSide("Sisi Bank", data.session.endingBankBalance, bankAdj, s.adjustedBankBalance)}
-      {renderSide("Sisi Buku", data.session.endingBookBalance, bookAdj, s.adjustedBookBalance)}
-      <div className="md:col-span-2 rounded-xl border border-slate-200 bg-white p-5 text-center">
-        <span className="text-sm text-slate-600">Selisih (Variance): </span>
-        <span className={`font-mono text-lg tabular-nums font-bold ${s.variance === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(s.variance)}</span>
+    <div className="rounded-lg border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+      <div className="border-b border-slate-200 px-5 pt-4 pb-3">
+        <h3 className="text-sm font-semibold text-slate-900">Matriks Rekonsiliasi — Laporan Formal</h3>
+      </div>
+      <div className="space-y-5 p-5">
+        {renderSection("A. Sisi Bank (Rekening Koran)", "Saldo bank disesuaikan", data.session.endingBankBalance, bankAdj)}
+        <div className="border-t border-slate-200/70 pt-4">
+          {renderSection("B. Sisi Buku (Buku Kas / GL)", "Saldo buku disesuaikan", data.session.endingBookBalance, bookAdj)}
+          <div className="double-underline mt-3 flex justify-between border-t border-slate-300 pt-2 font-semibold">
+            <span>Saldo Kas yang Benar (Disesuaikan)</span>
+            <span className="font-mono tabular-nums text-right">{formatIDR(s.adjustedBookBalance)}</span>
+          </div>
+        </div>
+      </div>
+      {/* Baris penutup CHECK */}
+      <div className={`border-t-2 px-5 py-3 text-center ${balanced ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-rose-500 bg-rose-50 text-rose-800"}`}>
+        <span className="text-xs font-semibold uppercase tracking-wide">Check (Harus Rp 0): </span>
+        <span className="font-mono text-lg font-bold tabular-nums">{formatIDR(s.variance)}</span>
       </div>
     </div>
   );
@@ -185,10 +203,11 @@ export function ReconMatrixCard({ data }: { data: HydratedSessionResponse }) {
 
 /* ---------- ReconWaterfallChart (true floating) ---------- */
 const COLOR_HEX: Record<string, string> = {
-  indigo: "#4f46e5",
-  emerald: "#10b981",
-  rose: "#e11d48",
-  amber: "#d97706",
+  indigo: "#0D9488",   // Saldo Awal — Teal-600
+  emerald: "#10B981",  // Penambahan — Emerald-500
+  rose: "#F43F5E",     // Pengurangan — Rose-500
+  amber: "#F59E0B",    // Saldo belum seimbang — Amber-500
+  teal: "#0F766E",     // Saldo Disesuaikan balanced — Teal-700
 };
 
 interface WaterfallDatum {
@@ -202,13 +221,20 @@ interface WaterfallDatum {
 export function ReconWaterfallChart({ data }: { data: HydratedSessionResponse }) {
   const s = data.summary;
   // Gunakan base ASLI dari backend (posisi floating), bukan Math.min(0, ...).
-  const chartData: WaterfallDatum[] = s.waterfallSteps.map((step) => ({
-    label: step.label,
-    base: step.base,
-    displayValue: Math.abs(step.value),
-    signed: step.value,
-    color: COLOR_HEX[step.color] ?? "#4f46e5",
-  }));
+  const chartData: WaterfallDatum[] = s.waterfallSteps.map((step) => {
+    let color = COLOR_HEX[step.color] ?? "#0D9488";
+    // Saldo Disesuaikan: amber (belum seimbang) → teal (seimbang).
+    if (step.kind === "total" && step.label.includes("Disesuaikan") && s.variance === 0) {
+      color = COLOR_HEX.teal!;
+    }
+    return {
+      label: step.label,
+      base: step.base,
+      displayValue: Math.abs(step.value),
+      signed: step.value,
+      color,
+    };
+  });
   // Domain YAxis dari [0, max(base + tinggi)] dengan padding atas nyaman.
   const maxTop = chartData.reduce((max, d) => Math.max(max, d.base + d.displayValue), 0);
   const yMax = Math.ceil((maxTop * 1.05) / 1_000_000) * 1_000_000;
@@ -231,8 +257,8 @@ export function ReconWaterfallChart({ data }: { data: HydratedSessionResponse })
       </p>
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={chartData} margin={{ top: 10, right: 20, bottom: 40, left: 20 }}>
-          <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" interval={0} />
-          <YAxis domain={[0, yMax]} tickFormatter={(v: number) => formatIDR(v)} tick={{ fontSize: 10 }} />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" interval={0} axisLine={{ stroke: "#E2E8F0" }} tickLine={false} />
+          <YAxis domain={[0, yMax]} tickFormatter={(v: number) => formatIDR(v)} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
           <Tooltip
             formatter={(value, name, item) => tooltipFormatter(value as number, name as string, item as { payload?: WaterfallDatum })}
             contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}

@@ -1,9 +1,10 @@
 @import "tailwindcss";
 
 /*
- * ReconFlow — Enterprise Fintech Precision design system.
- * Canvas slate-50, surface putih, primary slate-900 + aksen indigo-600,
- * status semantik emerald/amber/rose. Font: Inter (UI) + JetBrains Mono (angka).
+ * ReconFlow — Bright Modern Treasury design system.
+ * Canvas alabaster (#F8FAFC), surface putih bersih, primary teal-600,
+ * status semantik emerald (masuk/balanced) / amber (draft/warning) / rose (anomali/keluar).
+ * Font: Inter (UI) + JetBrains Mono (angka).
  * Nominal uang selalu memakai `font-mono tabular-nums text-right`.
  */
 @theme {
@@ -12,7 +13,7 @@
 }
 
 :root {
-  --background: #f8fafc; /* slate-50 */
+  --background: #f8fafc; /* alabaster / slate-50 */
   --foreground: #0f172a; /* slate-900 */
 }
 

@@ -23,7 +23,7 @@ const STATUS_TABS = ["Semua", "DRAFT", "BALANCED", "FINALIZED"] as const;
 const STATUS_CLASS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600 border-slate-200",
   BALANCED: "bg-emerald-50 text-emerald-600 border-emerald-200",
-  FINALIZED: "bg-indigo-50 text-indigo-600 border-indigo-200",
+  FINALIZED: "bg-teal-50 text-teal-600 border-teal-200",
 };
 
 export default function HistoryPage() {
@@ -104,13 +104,13 @@ export default function HistoryPage() {
         const id = info.row.original.id;
         return (
           <div className="flex items-center justify-end gap-2">
-            <Link href={`/workspace/${id}`} className="text-slate-600 hover:text-indigo-600" title="Buka">
+            <Link href={`/workspace/${id}`} className="text-slate-600 hover:text-teal-600" title="Buka">
               <ExternalLink className="h-4 w-4" />
             </Link>
-            <a href={`/api/sessions/${id}/export/pdf`} className="text-slate-600 hover:text-indigo-600" title="Unduh PDF">
+            <a href={`/api/sessions/${id}/export/pdf`} className="text-slate-600 hover:text-teal-600" title="Unduh PDF">
               <FileText className="h-4 w-4" />
             </a>
-            <a href={`/api/sessions/${id}/export/excel`} className="text-slate-600 hover:text-indigo-600" title="Unduh Excel">
+            <a href={`/api/sessions/${id}/export/excel`} className="text-slate-600 hover:text-teal-600" title="Unduh Excel">
               <FileSpreadsheet className="h-4 w-4" />
             </a>
             <button onClick={() => handleDelete(id)} className="text-slate-400 hover:text-rose-600" title="Hapus">
@@ -143,7 +143,7 @@ export default function HistoryPage() {
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             placeholder="Cari perusahaan / rekening..."
-            className="w-72 rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-72 rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           />
         </div>
         <div className="flex gap-1">
@@ -152,7 +152,7 @@ export default function HistoryPage() {
               key={tab}
               onClick={() => setStatusFilter(tab)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                statusFilter === tab ? "bg-indigo-50 text-indigo-600" : "text-slate-600 hover:bg-slate-100"
+                statusFilter === tab ? "bg-teal-50 text-teal-600" : "text-slate-600 hover:bg-slate-100"
               }`}
             >
               {tab}

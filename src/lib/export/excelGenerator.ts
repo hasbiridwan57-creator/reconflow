@@ -118,7 +118,7 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
 function styleHeader(ws: ExcelJS.Worksheet): void {
   const header = ws.getRow(1);
   header.font = { bold: true, color: { argb: "FFFFFFFF" } };
-  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F766E" } };
 }
 
 export function excelFileName(session: HydratedSessionResponse): string {

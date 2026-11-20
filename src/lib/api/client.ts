@@ -34,6 +34,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (json as { data: T }).data;
 }
 
+/**
+ * Notifikasi ringan agar sidebar multi-account me-refresh daftar rekening
+ * secara real-time tanpa full refresh. Dipicu setelah tiap mutasi sesi.
+ */
+export function notifySessionsChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("reconflow:sessions-changed"));
+  }
+}
+
+/** Wrapper: jalankan mutasi lalu beri tahu sidebar multi-account. */
+async function mutate<T>(fn: () => Promise<T>): Promise<T> {
+  const result = await fn();
+  notifySessionsChanged();
+  return result;
+}
+
 export const api = {
   health: () => request<{ status: string; timestamp: string }>("/api/health"),
   listSessions: (params?: { q?: string; status?: string }) => {
@@ -44,60 +61,89 @@ export const api = {
     return request<SessionListItem[]>(`/api/sessions${suffix}`);
   },
   createDemo: (scenarioKey: "umkm" | "ecommerce" | "audit") =>
-    request<{ id: string }>("/api/sessions/demo", {
-      method: "POST",
-      body: JSON.stringify({ scenarioKey }),
-    }),
+    mutate(() =>
+      request<{ id: string }>("/api/sessions/demo", {
+        method: "POST",
+        body: JSON.stringify({ scenarioKey }),
+      }),
+    ),
   createSession: (body: Record<string, unknown>) =>
-    request<{ id: string }>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+    mutate(() =>
+      request<{ id: string }>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+    ),
   getSession: (id: string) => request<HydratedSessionResponse>(`/api/sessions/${id}`),
   updateSession: (id: string, body: Record<string, unknown>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
-  deleteSession: (id: string) => request<{ deleted: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    ),
+  deleteSession: (id: string) =>
+    mutate(() =>
+      request<{ deleted: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
+    ),
   reRunMatch: (id: string, config?: Record<string, unknown>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/match`, {
-      method: "POST",
-      body: config ? JSON.stringify(config) : undefined,
-    }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/match`, {
+        method: "POST",
+        body: config ? JSON.stringify(config) : undefined,
+      }),
+    ),
   approveMatch: (id: string, matchId: string, body: Record<string, unknown>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/matches/${matchId}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/matches/${matchId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    ),
   approveAllSuggested: (id: string) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/matches/approve-all`, { method: "POST" }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/matches/approve-all`, { method: "POST" }),
+    ),
   createBulkAdjustments: (id: string, items: Array<Record<string, unknown>>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments/bulk`, {
-      method: "POST",
-      body: JSON.stringify({ items }),
-    }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments/bulk`, {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      }),
+    ),
   deleteMatch: (id: string, matchId: string) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/matches/${matchId}`, { method: "DELETE" }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/matches/${matchId}`, { method: "DELETE" }),
+    ),
   manualPair: (id: string, body: Record<string, unknown>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/matches/manual`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/matches/manual`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    ),
   createAdjustment: (id: string, body: Record<string, unknown>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    ),
   updateAdjustment: (id: string, adjId: string, body: Record<string, unknown>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments/${adjId}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments/${adjId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    ),
   deleteAdjustment: (id: string, adjId: string) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments/${adjId}`, { method: "DELETE" }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/adjustments/${adjId}`, { method: "DELETE" }),
+    ),
   finalize: (id: string, body: Record<string, unknown>) =>
-    request<HydratedSessionResponse>(`/api/sessions/${id}/finalize`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    mutate(() =>
+      request<HydratedSessionResponse>(`/api/sessions/${id}/finalize`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    ),
 };
 
 export type { HydratedSessionResponse, SessionMeta };

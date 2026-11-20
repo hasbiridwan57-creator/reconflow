@@ -38,7 +38,7 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
     head: [["Sisi Bank — Komponen", "Kategori", "Jumlah (Rp)"]],
     body: bankRows,
     styles: { fontSize: 9 },
-    headStyles: { fillColor: [79, 70, 229] },
+    headStyles: { fillColor: [15, 118, 110] },
     columnStyles: { 2: { halign: "right" } },
   });
 
@@ -56,7 +56,7 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
     head: [["Sisi Buku — Komponen", "Kategori", "Jumlah (Rp)"]],
     body: bookRows,
     styles: { fontSize: 9 },
-    headStyles: { fillColor: [79, 70, 229] },
+    headStyles: { fillColor: [15, 118, 110] },
     columnStyles: { 2: { halign: "right" } },
   });
 

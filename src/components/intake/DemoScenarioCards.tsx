@@ -65,10 +65,10 @@ export function DemoScenarioCards() {
             key={s.key}
             onClick={() => launch(s.key)}
             disabled={loading !== null}
-            className="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 text-left shadow-xs transition hover:border-indigo-300 hover:shadow-sm disabled:opacity-60"
+            className="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 text-left shadow-xs transition hover:border-teal-300 hover:shadow-sm disabled:opacity-60"
           >
             <div className="flex items-center justify-between">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 group-hover:bg-teal-50 group-hover:text-teal-600">
                 <Icon className="h-5 w-5" />
               </div>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${s.badgeClass}`}>{s.badge}</span>
@@ -76,7 +76,7 @@ export function DemoScenarioCards() {
             <div className="mt-4 text-sm font-semibold text-slate-900">{s.title}</div>
             <div className="mt-1 text-xs text-slate-500">{s.company}</div>
             <div className="mt-3 text-xs leading-relaxed text-slate-600">{s.highlights}</div>
-            <div className="mt-4 text-sm font-medium text-indigo-600">
+            <div className="mt-4 text-sm font-medium text-teal-600">
               {isLoading ? "Memuat..." : "Muat Skenario →"}
             </div>
           </button>

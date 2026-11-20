@@ -26,7 +26,7 @@ export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessi
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className="rounded-lg border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <div className="border-b border-slate-200 p-4">
         <h4 className="text-sm font-semibold text-slate-900">Jurnal Penyesuaian (Sisi Buku)</h4>
         <p className="text-xs text-slate-500">Penyesuaian Sisi Bank tidak menghasilkan jurnal.</p>
@@ -35,7 +35,7 @@ export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessi
         <div className="p-6 text-sm text-slate-500">Belum ada jurnal penyesuaian.</div>
       ) : (
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="border-b border-slate-200 bg-slate-50/90 border-y border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-4 py-3 font-medium">Akun</th>
               <th className="px-4 py-3 font-medium">Keterangan</th>
@@ -59,7 +59,7 @@ export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessi
                           defaultValue={l.accountName}
                           onBlur={(ev) => { if (ev.target.value !== l.accountName) updateContra(adj.id, ev.target.value); }}
                           disabled={finalized}
-                          className="w-full rounded border border-transparent px-2 py-1 text-sm outline-none hover:border-slate-200 focus:border-indigo-500 disabled:bg-slate-50"
+                          className="w-full rounded border border-transparent px-2 py-1 text-sm outline-none hover:border-slate-200 focus:border-teal-500 disabled:bg-slate-50"
                         />
                       ) : (
                         <span className="px-2 py-1 text-sm font-medium">{l.accountName}</span>
@@ -97,13 +97,13 @@ export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessi
 export function AuditLogTimeline({ data }: { data: HydratedSessionResponse }) {
   const logs = data.auditLogs;
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="rounded-lg border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] p-5">
       <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900"><Clock className="h-4 w-4" /> Audit Trail</h4>
       {logs.length === 0 ? <div className="text-sm text-slate-500">Belum ada aktivitas.</div> : (
         <ol className="space-y-3 border-l border-slate-200 pl-4">
           {logs.map((log) => (
             <li key={log.id} className="relative">
-              <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-indigo-500" />
+              <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-teal-500" />
               <div className="text-sm text-slate-900">{log.summary}</div>
               <div className="text-xs text-slate-400">{log.action} · {new Date(log.createdAt).toLocaleString("id-ID")}</div>
             </li>
@@ -137,7 +137,7 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="rounded-lg border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] p-5">
       <h4 className="mb-4 text-sm font-semibold text-slate-900">Finalisasi &amp; Ekspor</h4>
       <div className="flex flex-wrap gap-2">
         <button
@@ -149,12 +149,12 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
             } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
           }}
           disabled={!isBalanced && !finalized}
-          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
         >
           <Lock className="h-4 w-4" /> {finalized ? "Buka Kembali Sesi" : "Finalisasi & Kunci Sesi"}
         </button>
         {/* FINALIZED: tombol PDF langsung unduh (buka modal). Non-FINALIZED: buka modal. */}
-        <button onClick={() => finalized ? doExportPdf() : setOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+        <button onClick={() => finalized ? doExportPdf() : setOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
           <FileText className="h-4 w-4" /> Ekspor Laporan PDF
         </button>
         <a href={`/api/sessions/${data.session.id}/export/excel`} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -167,19 +167,19 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6">
+          <div className="w-full max-w-md rounded-lg border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] p-6">
             <h3 className="mb-4 text-lg font-semibold text-slate-900">Blok Tanda Tangan</h3>
             <label className="mb-3 block">
               <span className="mb-1 block text-xs text-slate-600">Prepared by</span>
-              <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              <input value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500" />
             </label>
             <label className="mb-4 block">
               <span className="mb-1 block text-xs text-slate-600">Reviewed by</span>
-              <input value={reviewedBy} onChange={(e) => setReviewedBy(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              <input value={reviewedBy} onChange={(e) => setReviewedBy(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500" />
             </label>
             <div className="flex justify-end gap-2">
               <button onClick={() => setOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Batal</button>
-              <button onClick={doExportPdf} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Unduh PDF</button>
+              <button onClick={doExportPdf} className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">Unduh PDF</button>
             </div>
           </div>
         </div>

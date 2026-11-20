@@ -11,7 +11,7 @@ import { formatIDR } from "@/lib/format";
 const STATUS_CLASS: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600 border-slate-200",
   BALANCED: "bg-emerald-50 text-emerald-600 border-emerald-200",
-  FINALIZED: "bg-indigo-50 text-indigo-600 border-indigo-200",
+  FINALIZED: "bg-teal-50 text-teal-600 border-teal-200",
 };
 
 export function RecentSessions() {
@@ -60,7 +60,7 @@ export function RecentSessions() {
                 </span>
               </td>
               <td className="px-4 py-3 text-right">
-                <Link href={`/workspace/${s.id}`} className="text-sm font-medium text-indigo-600 hover:underline">
+                <Link href={`/workspace/${s.id}`} className="text-sm font-medium text-teal-600 hover:underline">
                   Lanjutkan
                 </Link>
               </td>
