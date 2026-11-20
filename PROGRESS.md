@@ -89,3 +89,15 @@
 
 ### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
 1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
+
+## Putaran Audit Gemini ke-2 (Nov 2026)
+- [x] Fix `GET /api/sessions`: variance dihitung dari penyesuaian bertanda langsung (bukan membalik `signedAmount`); unclassifiedCount hanya hitung transaksi tanpa match & tanpa adjustment.
+- [x] Fix ekspor PDF/Excel: rincian item penyesuaian per baris; footer Match Rate persen betul; blok tanda tangan formal di PDF; `numFmt='0.0%'` untuk Match Rate di Excel.
+- [x] Fix waterfall true floating pakai `base` asli + domain YAxis + tooltip custom.
+- [x] Fix 4 UI bug: accessor string di ConfirmedMatchesTab; `faultSide` di SuggestedReviewTab; tombol manual pair disembunyikan jika sudah diklasifikasi; deskripsi penyesuaian di ReconMatrixCard; tombol PDF FINALIZED langsung unduh.
+- [x] Fix PATCH match route: include `bookTx` + fallback `contraAccountName` + description informatif.
+- [x] Perkuat integration test: hapus status "RECONCILED" (bukan enum); uji route handler Next.js langsung (GET sessions, PATCH BBM, export PDF/Excel).
+- [x] Smart Category Suggestion helper di `src/lib/engine/suggester.ts` + pill 1-klik di UnmatchedSplitTab.
+- [x] Banner Demo Audit Brief di `/workspace/[id]`.
+- [x] UX `/new`: `periodEndDate` type=date + auto-isi dari tanggal terbaru; saldo akhir update otomatis saat ubah mapping balance.
+- [x] Gate hijau: tsc / lint / test / build.

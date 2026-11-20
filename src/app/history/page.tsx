@@ -77,9 +77,9 @@ export default function HistoryPage() {
         </div>
       ),
     }),
-    columnHelper.accessor((row) => row.endingBankBalance - row.endingBookBalance, {
+    columnHelper.accessor((row) => row.variance, {
       id: "variance",
-      header: "Selisih (Raw)",
+      header: "Selisih (Adjusted)",
       cell: (info) => {
         const v = info.getValue();
         return <span className={`font-mono tabular-nums ${v === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(v)}</span>;

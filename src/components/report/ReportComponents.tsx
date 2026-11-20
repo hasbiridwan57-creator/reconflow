@@ -124,11 +124,13 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
 
   async function doExportPdf() {
     try {
-      // FINALIZED: JANGAN updateSession (409). Langsung ekspor dengan metadata saat itu.
-      if (!finalized) {
-        await api.updateSession(data.session.id, { preparedBy, reviewedBy });
-        onRefresh();
+      // FINALIZED: langsung unduh PDF tanpa modal (metadata tak bisa diubah).
+      if (finalized) {
+        window.location.href = `/api/sessions/${data.session.id}/export/pdf`;
+        return;
       }
+      await api.updateSession(data.session.id, { preparedBy, reviewedBy });
+      onRefresh();
       window.location.href = `/api/sessions/${data.session.id}/export/pdf`;
       setOpen(false);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
@@ -151,7 +153,8 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
         >
           <Lock className="h-4 w-4" /> {finalized ? "Buka Kembali Sesi" : "Finalisasi & Kunci Sesi"}
         </button>
-        <button onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+        {/* FINALIZED: tombol PDF langsung unduh (buka modal). Non-FINALIZED: buka modal. */}
+        <button onClick={() => finalized ? doExportPdf() : setOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
           <FileText className="h-4 w-4" /> Ekspor Laporan PDF
         </button>
         <a href={`/api/sessions/${data.session.id}/export/excel`} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">

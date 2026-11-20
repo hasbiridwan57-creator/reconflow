@@ -17,6 +17,7 @@ export interface SessionListItem {
   transactionCount: number;
   matchRate: number;
   unclassifiedCount: number;
+  variance: number;
   updatedAt: string;
 }
 

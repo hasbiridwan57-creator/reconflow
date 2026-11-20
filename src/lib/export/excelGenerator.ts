@@ -6,6 +6,7 @@
 import ExcelJS from "exceljs";
 import { slugify } from "@/lib/export/pdfGenerator";
 import type { HydratedSessionResponse } from "@/lib/session";
+import { getCategoryLabel } from "@/lib/engine/calculator";
 
 export async function generateExcel(session: HydratedSessionResponse): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
@@ -15,7 +16,7 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
   const meta = session.session;
   const s = session.summary;
 
-  // ---- Sheet 1: Ringkasan ----
+  // ---- Sheet 1: Ringkasan (rincian per item penyesuaian) ----
   const ws1 = wb.addWorksheet("Ringkasan");
   ws1.columns = [
     { header: "Komponen", key: "label", width: 40 },
@@ -27,18 +28,37 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
     { label: "Periode", value: meta.periodLabel },
     { label: "Status", value: meta.status },
     { label: "", value: "" },
-    { label: "Saldo akhir bank", value: meta.endingBankBalance },
-    { label: "Penyesuaian sisi bank", value: s.totalBankAdjustments },
-    { label: "Saldo bank disesuaikan", value: s.adjustedBankBalance },
-    { label: "", value: "" },
-    { label: "Saldo akhir buku", value: meta.endingBookBalance },
-    { label: "Penyesuaian sisi buku", value: s.totalBookAdjustments },
-    { label: "Saldo buku disesuaikan", value: s.adjustedBookBalance },
-    { label: "", value: "" },
-    { label: "SELISIH (VARIANCE)", value: s.variance },
-    { label: "Match Rate (%)", value: s.matchRate },
   ]);
-  ws1.getColumn("value").numFmt = '#,##0';
+
+  // Penyesuaian Sisi Bank — rincian tiap item.
+  ws1.addRow({ label: "SISI BANK", value: "" });
+  ws1.addRow({ label: "  Saldo akhir bank", value: meta.endingBankBalance });
+  const bankAdj = session.adjustments.filter((a) => a.side === "BANK");
+  for (const a of bankAdj) {
+    ws1.addRow({ label: `  ${a.description} [${getCategoryLabel(a.category)}]`, value: a.signedAmount });
+  }
+  ws1.addRow({ label: "  Saldo bank disesuaikan", value: s.adjustedBankBalance });
+  ws1.addRow({ label: "", value: "" });
+
+  // Penyesuaian Sisi Buku — rincian tiap item.
+  ws1.addRow({ label: "SISI BUKU", value: "" });
+  ws1.addRow({ label: "  Saldo akhir buku", value: meta.endingBookBalance });
+  const bookAdj = session.adjustments.filter((a) => a.side === "BOOK");
+  for (const a of bookAdj) {
+    ws1.addRow({ label: `  ${a.description} [${getCategoryLabel(a.category)}]`, value: a.signedAmount });
+  }
+  ws1.addRow({ label: "  Saldo buku disesuaikan", value: s.adjustedBookBalance });
+  ws1.addRow({ label: "", value: "" });
+
+  ws1.addRow({ label: "SELISIH (VARIANCE)", value: s.variance });
+
+  // Baris Match Rate (%) — cell numFmt '0.0%' terpisah.
+  const matchRateRow = ws1.addRow({ label: "Match Rate (%)", value: s.matchRate });
+  matchRateRow.getCell("value").numFmt = "0.0%";
+
+  // Format angka Rupiah untuk kolom value (KECUALI baris persen).
+  ws1.getColumn("value").numFmt = "#,##0";
+  matchRateRow.getCell("value").numFmt = "0.0%";
   styleHeader(ws1);
 
   // ---- Sheet 2: Transaksi Bank ----
@@ -54,7 +74,7 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
   session.bankTransactions.forEach((t) => {
     ws2.addRow({ date: t.date, ref: t.reference, desc: t.description, dir: t.direction, amount: t.amount, status: t.matchStatus ?? "UNMATCHED" });
   });
-  ws2.getColumn("amount").numFmt = '#,##0';
+  ws2.getColumn("amount").numFmt = "#,##0";
   styleHeader(ws2);
 
   // ---- Sheet 3: Transaksi Buku ----
@@ -70,7 +90,7 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
   session.bookTransactions.forEach((t) => {
     ws3.addRow({ date: t.date, ref: t.reference, desc: t.description, dir: t.direction, amount: t.amount, status: t.matchStatus ?? "UNMATCHED" });
   });
-  ws3.getColumn("amount").numFmt = '#,##0';
+  ws3.getColumn("amount").numFmt = "#,##0";
   styleHeader(ws3);
 
   // ---- Sheet 4: Jurnal Penyesuaian ----
@@ -87,8 +107,8 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
     });
   });
   ws4.addRow({ desc: "", acc: "TOTAL", debit: session.journals.totalDebit, credit: session.journals.totalCredit });
-  ws4.getColumn("debit").numFmt = '#,##0';
-  ws4.getColumn("credit").numFmt = '#,##0';
+  ws4.getColumn("debit").numFmt = "#,##0";
+  ws4.getColumn("credit").numFmt = "#,##0";
   styleHeader(ws4);
 
   const arrayBuffer = await wb.xlsx.writeBuffer();

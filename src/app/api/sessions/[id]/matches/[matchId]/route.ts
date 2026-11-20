@@ -25,7 +25,10 @@ export async function PATCH(
 
     const match = await prisma.matchPair.findUnique({
       where: { id: matchId },
-      include: { bankTx: { select: { direction: true } } },
+      include: {
+        bankTx: { select: { direction: true } },
+        bookTx: { select: { description: true, counterAccount: true } },
+      },
     });
     if (!match || match.sessionId !== id) return notFoundResponse("Match");
 
@@ -65,8 +68,8 @@ export async function PATCH(
               side: faultSide,
               category,
               signedAmount,
-              description: `Koreksi selisih transposisi (${faultSide})`,
-              contraAccountName: discrepancyResolution?.contraAccountName ?? null,
+              description: `Koreksi selisih: ${match.bookTx.description}`,
+              contraAccountName: discrepancyResolution?.contraAccountName || (faultSide === "BOOK" ? match.bookTx.counterAccount : null),
               auditNote: discrepancyResolution?.auditNote ?? null,
             },
           });

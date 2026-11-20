@@ -137,7 +137,7 @@ async function solveSession(sessionId: string): Promise<void> {
     }
     break;
   }
-  await prisma.reconciliationSession.update({ where: { id: sessionId }, data: { status: "RECONCILED" } });
+  await prisma.reconciliationSession.update({ where: { id: sessionId }, data: { status: "BALANCED" } });
 }
 
 beforeAll(async () => {
@@ -197,8 +197,8 @@ describe("Alur 3 demo + FINALIZE guard", () => {
       // assertNotFinalized lempar ApiError CONFLICT (409).
       await expect(assertNotFinalized(sid)).rejects.toThrow();
 
-      // Setelah REOPEN, mutasi bebas.
-      await prisma.reconciliationSession.update({ where: { id: sid }, data: { status: "RECONCILED" } });
+      // Setelah REOPEN ke DRAFT, mutasi bebas.
+      await prisma.reconciliationSession.update({ where: { id: sid }, data: { status: "DRAFT" } });
       await expect(assertNotFinalized(sid)).resolves.toBeUndefined();
     });
   }
@@ -210,5 +210,91 @@ describe("Alur 3 demo + FINALIZE guard", () => {
     const bbm = data.adjustments.filter((a) => a.category === "BOOK_ERROR_ADD" && a.signedAmount === 90000);
     expect(bbm.length).toBeGreaterThanOrEqual(1);
     // Tidak ada BOOK_ERROR_DEDUCT -90000 yang salah arah untuk BBM.
+  });
+});
+
+/* =====================================================================
+ * TEMUAN AUDIT #6 — Uji route handler Next.js langsung (sungguhan).
+ * ===================================================================== */
+describe("Route handlers (Next.js) — uji langsung", () => {
+  it("GET /api/sessions: balanced → variance=0, unclassifiedCount=0", async () => {
+    const sid = await createDemoSession("umkm");
+    await solveSession(sid); // helper set status BALANCED.
+
+    const { GET } = await import("@/app/api/sessions/route");
+    const res = await GET(new Request("http://localhost/api/sessions"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: Array<{ id: string; variance: number; unclassifiedCount: number }> };
+    const list = body.data;
+    const row = list.find((r) => r.id === sid)!;
+    expect(row.variance).toBe(0);
+    expect(row.unclassifiedCount).toBe(0);
+  });
+
+  it("PATCH matches/[matchId]: approve BBM → BOOK_ERROR_ADD +90000, contraAccountName default", async () => {
+    // Gunakan sesi FRESH (tanpa solveSession, agar BBM belum ter-approve).
+    const sid = await createDemoSession("audit");
+
+    const bbmMatch = await prisma.matchPair.findFirst({
+      where: { sessionId: sid, status: "DISCREPANCY_MATCH", amountDiff: -90000 },
+      include: { bookTx: { select: { description: true } } },
+    });
+    expect(bbmMatch).toBeTruthy(); // BBM harus ada sebagai DISCREPANCY_MATCH.
+    if (!bbmMatch) return;
+
+    const { PATCH } = await import("@/app/api/sessions/[id]/matches/[matchId]/route");
+    const req = new Request(`http://localhost/api/sessions/${sid}/matches/${bbmMatch.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "APPROVE", discrepancyResolution: { faultSide: "BOOK" } }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: sid, matchId: bbmMatch.id }) });
+    expect(res.status).toBe(200);
+
+    const data = (await getHydratedSession(sid))!;
+    const bbm = data.adjustments.find((a) => a.category === "BOOK_ERROR_ADD" && a.signedAmount === 90000);
+    expect(bbm).toBeTruthy();
+    expect(bbm!.contraAccountName).toBe("Beban BBM & Tol");
+  });
+
+  it("GET export/pdf & export/excel pada FINALIZED: 200 + magic bytes + numFmt 0.0%", async () => {
+    const sid = await createDemoSession("ecommerce");
+    await solveSession(sid);
+    await prisma.reconciliationSession.update({ where: { id: sid }, data: { status: "FINALIZED" } });
+
+    const { GET: getPdf } = await import("@/app/api/sessions/[id]/export/pdf/route");
+    const { GET: getExcel } = await import("@/app/api/sessions/[id]/export/excel/route");
+
+    // PDF
+    const pdfRes = await getPdf(new Request("http://localhost/x"), { params: Promise.resolve({ id: sid }) });
+    expect(pdfRes.status).toBe(200);
+    const pdfBytes = new Uint8Array(await pdfRes.arrayBuffer());
+    expect(pdfBytes.length).toBeGreaterThan(0);
+    // Magic bytes PDF: 0x25 0x50 0x44 0x46 → "%PDF"
+    expect(String.fromCharCode(pdfBytes[0], pdfBytes[1], pdfBytes[2], pdfBytes[3])).toBe("%PDF");
+
+    // Excel
+    const xlsRes = await getExcel(new Request("http://localhost/x"), { params: Promise.resolve({ id: sid }) });
+    expect(xlsRes.status).toBe(200);
+    const xlsBytes = new Uint8Array(await xlsRes.arrayBuffer());
+    // Magic bytes ZIP: 0x50 0x4B → "PK"
+    expect(xlsBytes[0]).toBe(0x50);
+    expect(xlsBytes[1]).toBe(0x4b);
+
+    // Workbook Excel: Match Rate (%) baris menggunakan numFmt "0.0%".
+    const ExcelJSMod = (await import("exceljs")).default;
+    const wb = new ExcelJSMod.Workbook();
+    type WorkbookInst = InstanceType<typeof ExcelJSMod.Workbook>;
+    type XlsxBuffer = Parameters<WorkbookInst["xlsx"]["load"]>[0];
+    await wb.xlsx.load(Buffer.from(xlsBytes) as unknown as XlsxBuffer);
+    const summary = wb.getWorksheet("Ringkasan")!;
+    let matchRateNumFmt: string | null = null;
+    summary.eachRow((row) => {
+      const label = String(row.getCell(1).value ?? "");
+      if (label.includes("Match Rate")) {
+        matchRateNumFmt = row.getCell(2).numFmt ?? null;
+      }
+    });
+    expect(matchRateNumFmt).toBe("0.0%");
   });
 });

@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { api, type HydratedSessionResponse } from "@/lib/api/client";
 import { formatIDR, formatIDRAccounting, formatDateID, formatPercent } from "@/lib/format";
 import { getCategoryLabel } from "@/lib/engine/calculator";
+import { suggestAdjustmentCategory } from "@/lib/engine/suggester";
 import type { AdjustmentCategory } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
 import {
@@ -116,7 +117,8 @@ export function SuggestedReviewTab({ data, onRefresh }: { data: HydratedSessionR
     try {
       const isDisc = action === "APPROVE" && m.status === "DISCREPANCY_MATCH" && m.amountDiff !== 0;
       const faultSide = isDisc ? (faultSides[m.id] ?? "BOOK") : undefined;
-      const contraAccountName = isDisc && faultSides[m.id] === "BOOK" ? (contraNames[m.id] || undefined) : undefined;
+      // Gunakan variabel faultSide (default "BOOK"), BUKAN faultSides[m.id] yang bisa undefined.
+      const contraAccountName = isDisc && faultSide === "BOOK" ? (contraNames[m.id] || undefined) : undefined;
       await api.approveMatch(data.session.id, m.id, {
         action,
         discrepancyResolution: faultSide ? { faultSide, contraAccountName } : undefined,
@@ -254,7 +256,20 @@ export function UnmatchedSplitTab({ data, onRefresh }: { data: HydratedSessionRe
                       <button onClick={() => unclassify(adjId)} disabled={finalized} className="text-xs text-slate-400 hover:text-rose-600 disabled:opacity-50">hapus</button>
                     </div>
                   ) : (
-                    <div className="mt-2">
+                    <div className="mt-2 space-y-1.5">
+                      {(() => {
+                        const suggestion = suggestAdjustmentCategory({ source: tx.source, direction: tx.direction, description: tx.description });
+                        if (!suggestion) return null;
+                        return (
+                          <button
+                            onClick={() => classify(tx.id, suggestion, tx.description)}
+                            disabled={finalized}
+                            className="w-full rounded-lg bg-indigo-50 px-2 py-1 text-left text-xs font-medium text-indigo-600 hover:bg-indigo-100 disabled:opacity-50"
+                          >
+                            Saran: {getCategoryLabel(suggestion)}
+                          </button>
+                        );
+                      })()}
                       <select
                         defaultValue=""
                         onChange={(e) => e.target.value && classify(tx.id, e.target.value, tx.description)}
@@ -269,13 +284,15 @@ export function UnmatchedSplitTab({ data, onRefresh }: { data: HydratedSessionRe
                       </select>
                     </div>
                   )}
-                  <button
-                    onClick={() => side === "BANK" ? setSelectedBank(tx.id) : setSelectedBook(tx.id)}
-                    disabled={finalized}
-                    className="mt-1 text-[11px] text-indigo-600 hover:underline disabled:opacity-50"
-                  >
-                    {selected ? "terpilih ✓" : "pilih untuk manual pair"}
-                  </button>
+                  {adjId ? null : (
+                    <button
+                      onClick={() => side === "BANK" ? setSelectedBank(tx.id) : setSelectedBook(tx.id)}
+                      disabled={finalized}
+                      className="mt-1 text-[11px] text-indigo-600 hover:underline disabled:opacity-50"
+                    >
+                      {selected ? "terpilih ✓" : "pilih untuk manual pair"}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -338,15 +355,15 @@ export function ConfirmedMatchesTab({ data, onRefresh }: { data: HydratedSession
   const [search, setSearch] = useState("");
   const helper = confirmedColumnHelper;
   const columns = useMemo(() => [
-    helper.accessor("bankTx", { header: "Tanggal", cell: (i) => <span className="text-xs text-slate-600">{formatDateID(i.getValue().date)}</span> }),
-    helper.accessor("bankTx", { id: "bank", header: "Bank", cell: (i) => <div className="text-sm text-slate-900">{i.getValue().description}</div> }),
-    helper.accessor("bookTx", { header: "Buku", cell: (i) => <div className="text-sm text-slate-900">{i.getValue().description}</div> }),
+    helper.accessor((row) => row.bankTx.date, { id: "date", header: "Tanggal", cell: (i) => <span className="text-xs text-slate-600">{formatDateID(i.row.original.bankTx.date)}</span> }),
+    helper.accessor((row) => row.bankTx.description, { id: "bank", header: "Bank", cell: (i) => <div className="text-sm text-slate-900">{i.getValue()}</div> }),
+    helper.accessor((row) => row.bookTx.description, { id: "book", header: "Buku", cell: (i) => <div className="text-sm text-slate-900">{i.getValue()}</div> }),
     helper.accessor("status", { header: "Status", cell: (i) => {
       const map: Record<string, string> = { EXACT_MATCH: "Cocok Persis", SUGGESTED_MATCH: "Saran", DISCREPANCY_MATCH: "Selisih", MANUAL_MATCH: "Manual" };
       return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{map[i.getValue()] ?? i.getValue()}</span>;
     }}),
     helper.accessor("confidenceScore", { header: "Confidence", cell: (i) => <span className="font-mono tabular-nums text-sm">{i.getValue()}%</span> }),
-    helper.accessor("bankTx", { id: "amount", header: "Nominal", cell: (i) => <span className="font-mono tabular-nums text-right text-sm">{formatIDR(i.getValue().amount)}</span> }),
+    helper.accessor((row) => row.bankTx.amount, { id: "amount", header: "Nominal", cell: (i) => <span className="font-mono tabular-nums text-right text-sm">{formatIDR(i.getValue())}</span> }),
     helper.display({ id: "actions", header: "", cell: (i) => (
       <button
         onClick={async () => {
@@ -441,11 +458,23 @@ export function ReconMatrixCard({ data }: { data: HydratedSessionResponse }) {
           <div className="flex justify-between"><span className="text-slate-600">Saldo akhir</span><span className="font-mono tabular-nums text-right">{formatIDR(start)}</span></div>
           {additions.length > 0 && <div className="mt-1 text-xs font-medium text-slate-400">Penambahan (+)</div>}
           {additions.map((a) => (
-            <div key={a.id} className="flex justify-between"><span className="text-xs text-slate-500">{getCategoryLabel(a.category)}</span><span className="font-mono tabular-nums text-right text-emerald-600">{formatIDRAccounting(a.signedAmount)}</span></div>
+            <div key={a.id} className="flex justify-between">
+              <div>
+                <div className="text-sm text-slate-900">{a.description}</div>
+                <div className="text-xs text-slate-400">{getCategoryLabel(a.category)}</div>
+              </div>
+              <span className="font-mono tabular-nums text-right text-emerald-600">{formatIDRAccounting(a.signedAmount)}</span>
+            </div>
           ))}
           {deductions.length > 0 && <div className="mt-1 text-xs font-medium text-slate-400">Pengurangan (−)</div>}
           {deductions.map((a) => (
-            <div key={a.id} className="flex justify-between"><span className="text-xs text-slate-500">{getCategoryLabel(a.category)}</span><span className="font-mono tabular-nums text-right text-rose-600">{formatIDRAccounting(a.signedAmount)}</span></div>
+            <div key={a.id} className="flex justify-between">
+              <div>
+                <div className="text-sm text-slate-900">{a.description}</div>
+                <div className="text-xs text-slate-400">{getCategoryLabel(a.category)}</div>
+              </div>
+              <span className="font-mono tabular-nums text-right text-rose-600">{formatIDRAccounting(a.signedAmount)}</span>
+            </div>
           ))}
           <div className="double-underline mt-2 border-t border-slate-300 pt-2 flex justify-between font-semibold">
             <span>Saldo Kas yang Benar (Disesuaikan)</span>
@@ -476,38 +505,54 @@ const COLOR_HEX: Record<string, string> = {
   amber: "#d97706",
 };
 
+interface WaterfallDatum {
+  label: string;
+  base: number;
+  displayValue: number;
+  signed: number;
+  color: string;
+}
+
 export function ReconWaterfallChart({ data }: { data: HydratedSessionResponse }) {
-  // Gunakan waterfallSteps dari backend langsung (sudah arah-aware).
-  const steps = data.summary.waterfallSteps;
-  const chartData = steps.map((s) => ({
-    label: s.label,
-    base: Math.min(0, s.value),
-    displayValue: Math.abs(s.value),
-    signed: s.value,
-    color: COLOR_HEX[s.color] ?? "#4f46e5",
+  const s = data.summary;
+  // Gunakan base ASLI dari backend (posisi floating), bukan Math.min(0, ...).
+  const chartData: WaterfallDatum[] = s.waterfallSteps.map((step) => ({
+    label: step.label,
+    base: step.base,
+    displayValue: Math.abs(step.value),
+    signed: step.value,
+    color: COLOR_HEX[step.color] ?? "#4f46e5",
   }));
-  const all = steps.map((s) => s.value).concat(0);
-  const yMin = Math.floor((Math.min(...all) * 0.98) / 1_000_000) * 1_000_000;
-  const yMax = Math.ceil((Math.max(...all) * 1.02) / 1_000_000) * 1_000_000;
+  // Domain YAxis dari [0, max(base + tinggi)] dengan padding atas nyaman.
+  const maxTop = chartData.reduce((max, d) => Math.max(max, d.base + d.displayValue), 0);
+  const yMax = Math.ceil((maxTop * 1.05) / 1_000_000) * 1_000_000;
+
+  const tooltipFormatter = (value: number, name: string, item: { payload?: WaterfallDatum }) => {
+    if (name === "displayValue") {
+      const d = item.payload;
+      const isTotal = d && d.base === 0 && d.signed > 0 && d.displayValue === d.signed && d.label.includes("Saldo");
+      const formatted = isTotal ? formatIDR(d!.signed) : (d && d.signed > 0 ? `+${formatIDR(d.signed)}` : `-${formatIDR(Math.abs(d!.signed))}`);
+      return [formatted, d?.label ?? ""];
+    }
+    return ["", ""];
+  };
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <h4 className="mb-4 text-sm font-semibold text-slate-900">Jembatan Saldo Bank → Buku</h4>
+      <h4 className="mb-1 text-sm font-semibold text-slate-900">Jembatan Penyesuaian Saldo Bank</h4>
+      <p className="mb-4 text-xs text-slate-500">
+        Saldo Akhir Buku: <span className="font-mono tabular-nums">{formatIDR(data.session.endingBookBalance)}</span> · Selisih: <span className={`font-mono tabular-nums ${s.variance === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(s.variance)}</span>
+      </p>
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={chartData} margin={{ top: 10, right: 20, bottom: 40, left: 20 }}>
           <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" interval={0} />
-          <YAxis domain={[yMin, yMax]} tickFormatter={(v: number) => formatIDR(v)} tick={{ fontSize: 10 }} />
+          <YAxis domain={[0, yMax]} tickFormatter={(v: number) => formatIDR(v)} tick={{ fontSize: 10 }} />
           <Tooltip
-            formatter={(value, name) => {
-              if (name === "displayValue") {
-                const c = chartData.find((x) => x.displayValue === Number(value));
-                return [formatIDR(c?.signed ?? 0), "Nilai"];
-              }
-              return [String(value), String(name)];
-            }}
+            formatter={(value, name, item) => tooltipFormatter(value as number, name as string, item as { payload?: WaterfallDatum })}
+            contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
           />
           <ReferenceLine y={0} stroke="#94a3b8" />
-          {/* base transparan menempatkan posisi floating; displayValue menggambar tinggi nyata. */}
+          {/* base transparan = posisi floating (dari backend); displayValue = tinggi batang. */}
           <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
           <Bar dataKey="displayValue" stackId="wf" isAnimationActive={false}>
             {chartData.map((c, i) => <Cell key={i} fill={c.color} />)}

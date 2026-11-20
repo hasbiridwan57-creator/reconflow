@@ -50,8 +50,8 @@ export function RecentSessions() {
               </td>
               <td className="px-4 py-3 text-slate-600">{s.periodLabel}</td>
               <td className="px-4 py-3 text-right font-mono tabular-nums">
-                <span className={s.endingBankBalance - s.endingBookBalance === 0 ? "text-emerald-600" : "text-rose-600"}>
-                  {formatIDR(s.endingBankBalance - s.endingBookBalance)}
+                <span className={s.variance === 0 ? "text-emerald-600" : "text-rose-600"}>
+                  {formatIDR(s.variance)}
                 </span>
               </td>
               <td className="px-4 py-3">

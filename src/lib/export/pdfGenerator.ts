@@ -5,6 +5,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { HydratedSessionResponse } from "@/lib/session";
+import { getCategoryLabel } from "@/lib/engine/calculator";
 
 export function generatePdf(session: HydratedSessionResponse): Uint8Array {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -22,22 +23,40 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
   doc.text(`Periode berakhir: ${meta.periodEndDate}`, 14, 35);
   doc.text(`Disusun: ${meta.preparedBy}   |   Direview: ${meta.reviewedBy}`, 14, 40);
 
-  // Ringkasan saldo (jembatan bank -> buku)
+  // Jembatan Sisi Bank — rincian per item penyesuaian.
+  const bankAdj = session.adjustments.filter((a) => a.side === "BANK");
+  const bookAdj = session.adjustments.filter((a) => a.side === "BOOK");
+  const bankRows: string[][] = [["Saldo akhir bank", formatIDR(meta.endingBankBalance)]];
+  for (const a of bankAdj) {
+    bankRows.push([`   ${a.description}`, getCategoryLabel(a.category), formatIDRAccounting(a.signedAmount)]);
+  }
+  bankRows.push(["= Saldo bank disesuaikan", "", formatIDR(s.adjustedBankBalance)]);
+
   autoTable(doc, {
     startY: 46,
-    head: [["Komponen", "Jumlah (Rp)"]],
-    body: [
-      ["Saldo akhir bank", formatIDR(meta.endingBankBalance)],
-      ["Penyesuaian sisi bank (bersih)", formatIDR(s.totalBankAdjustments)],
-      ["= Saldo bank disesuaikan", formatIDR(s.adjustedBankBalance)],
-      ["Saldo akhir buku", formatIDR(meta.endingBookBalance)],
-      ["Penyesuaian sisi buku (bersih)", formatIDR(s.totalBookAdjustments)],
-      ["= Saldo buku disesuaikan", formatIDR(s.adjustedBookBalance)],
-      ["SELISIH (VARIANCE)", formatIDR(s.variance)],
-    ],
+    head: [["Sisi Bank — Komponen", "Kategori", "Jumlah (Rp)"]],
+    body: bankRows,
     styles: { fontSize: 9 },
     headStyles: { fillColor: [79, 70, 229] },
-    columnStyles: { 1: { halign: "right" } },
+    columnStyles: { 2: { halign: "right" } },
+  });
+
+  // Jembatan Sisi Buku — rincian per item penyesuaian.
+  let y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  const bookRows: string[][] = [["Saldo akhir buku", "", formatIDR(meta.endingBookBalance)]];
+  for (const a of bookAdj) {
+    bookRows.push([`   ${a.description}`, getCategoryLabel(a.category), formatIDRAccounting(a.signedAmount)]);
+  }
+  bookRows.push(["= Saldo buku disesuaikan", "", formatIDR(s.adjustedBookBalance)]);
+  bookRows.push(["SELISIH (VARIANCE)", "", formatIDR(s.variance)]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Sisi Buku — Komponen", "Kategori", "Jumlah (Rp)"]],
+    body: bookRows,
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [79, 70, 229] },
+    columnStyles: { 2: { halign: "right" } },
   });
 
   // Jurnal penyesuaian
@@ -45,8 +64,9 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
     e.lines.map((l) => [e.description, l.accountName, l.debit !== 0 ? formatIDR(l.debit) : "", l.credit !== 0 ? formatIDR(l.credit) : ""]),
   );
   if (journalRows.length > 0) {
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
     autoTable(doc, {
-      startY: (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8,
+      startY: y,
       head: [["Uraian", "Akun", "Debit", "Kredit"]],
       body: [
         ...journalRows,
@@ -58,20 +78,53 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
     });
   }
 
-  // Footer status
+  // Footer status (Match Rate format persen benar).
   doc.setFont("helvetica", "italic");
   doc.setFontSize(9);
   doc.text(
-    `Status: ${meta.status}  |  Selisih: ${s.isBalanced ? "SEIMBANG (Rp 0)" : `Rp ${s.variance.toLocaleString("id-ID")}`}  |  Match Rate: ${s.matchRate}%`,
+    `Status: ${meta.status}  |  Selisih: ${s.isBalanced ? "SEIMBANG (Rp 0)" : `Rp ${s.variance.toLocaleString("id-ID")}`}  |  Match Rate: ${(s.matchRate * 100).toFixed(1)}%`,
     14,
     doc.internal.pageSize.getHeight() - 12,
   );
+
+  // Blok Tanda Tangan Formal (2 kolom sejajar).
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const signY = pageHeight - 52;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const col1X = 20;
+  const col2X = 120;
+  const sigLine = signY;
+  const nameY = signY + 6;
+  const dateY = signY + 22;
+
+  doc.text("Disusun Oleh (Prepared by):", col1X, signY - 6);
+  doc.text("Direview Oleh (Reviewed by):", col2X, signY - 6);
+  // Garis tanda tangan.
+  doc.line(col1X, sigLine, col1X + 60, sigLine);
+  doc.line(col2X, sigLine, col2X + 60, sigLine);
+  // Nama di bawah garis.
+  doc.setFont("helvetica", "bold");
+  doc.text(meta.preparedBy, col1X, nameY);
+  doc.text(meta.reviewedBy, col2X, nameY);
+  // Tanggal cetak.
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(9);
+  const printedDate = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  doc.text(`Tanggal cetak: ${printedDate}`, col1X, dateY);
 
   return doc.output("arraybuffer") as unknown as Uint8Array;
 }
 
 function formatIDR(n: number): string {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
+}
+
+/** Format akuntansi: negatif dalam tanda kurung, positif dengan tanda +. */
+function formatIDRAccounting(n: number): string {
+  if (n === 0) return formatIDR(0);
+  if (n > 0) return `+${formatIDR(n)}`;
+  return `(${formatIDR(Math.abs(n))})`;
 }
 
 export function pdfFileName(session: HydratedSessionResponse): string {

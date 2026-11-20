@@ -20,7 +20,7 @@ export async function GET(request: Request) {
       where,
       orderBy: { updatedAt: "desc" },
       include: {
-        transactions: { select: { id: true, direction: true } },
+        transactions: { select: { id: true } },
         matches: { select: { bankTxId: true, bookTxId: true, isConfirmed: true } },
         adjustments: { select: { transactionId: true, side: true, signedAmount: true } },
       },
@@ -30,16 +30,22 @@ export async function GET(request: Request) {
       const transactionCount = s.transactions.length;
       const confirmedMatches = s.matches.filter((m) => m.isConfirmed).length;
       const matchRate = transactionCount > 0 ? (confirmedMatches * 2) / transactionCount : 0;
-      // Transaksi belum diklasifikasi = belum termatch & belum punya adjustment.
-      const matchedTxIds = new Set(s.matches.filter((m) => m.isConfirmed).flatMap((m) => [m.bankTxId, m.bookTxId]));
-      const unclassifiedCount = transactionCount - matchedTxIds.size - s.adjustments.length;
-      // Adjusted variance = adjustedBank - adjustedBook (arah IN/OUT-aware).
-      const dirOf = (txId: string | null) =>
-        txId ? s.transactions.find((t) => t.id === txId)?.direction ?? "OUT" : "OUT";
-      const sumWithSign = (adjList: typeof s.adjustments) =>
-        adjList.reduce((sum, a) => sum + (dirOf(a.transactionId) === "IN" ? -a.signedAmount : a.signedAmount), 0);
-      const adjustedBank = s.endingBankBalance + sumWithSign(s.adjustments.filter((a) => a.side === "BANK"));
-      const adjustedBook = s.endingBookBalance + sumWithSign(s.adjustments.filter((a) => a.side === "BOOK"));
+      // signedAmount SUDAH bertanda (+ menambah, - mengurangi): jumlahkan langsung.
+      const adjustedBank = s.endingBankBalance
+        + s.adjustments.filter((a) => a.side === "BANK").reduce((sum, a) => sum + a.signedAmount, 0);
+      const adjustedBook = s.endingBookBalance
+        + s.adjustments.filter((a) => a.side === "BOOK").reduce((sum, a) => sum + a.signedAmount, 0);
+      // Transaksi belum diklasifikasi = tidak termatch (confirmed) DAN tidak punya
+      // penyesuaian langsung (a.transactionId !== null, agar DISCREPANCY_MATCH tak menghitung ganda).
+      const matchedTxIds = new Set(
+        s.matches.filter((m) => m.isConfirmed).flatMap((m) => [m.bankTxId, m.bookTxId]),
+      );
+      const adjustedTxIds = new Set(
+        s.adjustments.filter((a) => a.transactionId !== null).map((a) => a.transactionId as string),
+      );
+      const unclassifiedCount = s.transactions.filter(
+        (t) => !matchedTxIds.has(t.id) && !adjustedTxIds.has(t.id),
+      ).length;
       return {
         id: s.id,
         companyName: s.companyName,

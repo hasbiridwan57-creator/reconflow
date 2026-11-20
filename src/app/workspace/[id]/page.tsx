@@ -11,6 +11,7 @@ import type { HydratedSessionResponse } from "@/lib/session";
 import { AppShell } from "@/components/layout/AppShell";
 import { LiveReconStickyBar } from "@/components/layout/LiveReconStickyBar";
 import { MatchingControlsBar, KpiSummaryGrid, MatchingWorkbench, ReconMatrixCard, ReconWaterfallChart } from "@/components/workbench/WorkbenchComponents";
+import { DemoAuditBrief } from "@/components/workbench/DemoAuditBrief";
 import { AdjustingJournalTable, AuditLogTimeline, ExportActionBar } from "@/components/report/ReportComponents";
 
 // Urutan step (Gemini #8): 1=Matching Workbench (default), 2=Matriks & Waterfall,
@@ -74,6 +75,7 @@ export default function WorkspacePage() {
       {/* Step content */}
       {step === 0 && (
         <div className="space-y-6">
+          <DemoAuditBrief data={data} />
           <KpiSummaryGrid data={data} />
           <MatchingWorkbench data={data} onRefresh={refresh} />
         </div>

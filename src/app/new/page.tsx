@@ -97,12 +97,37 @@ export default function NewSessionPage() {
         // Auto-isi saldo akhir dari baris terakhir jika ada kolom saldo.
         const last = result.data[result.data.length - 1];
         const saldoKey = parsed.mapping.balance;
-        if (last && saldoKey) {
-          const saldo = Math.abs(parseIndonesianCurrency(last[saldoKey]));
-          setMeta((m) => source === "BANK" ? { ...m, endingBankBalance: saldo } : { ...m, endingBookBalance: saldo });
-        }
+        // Auto-isi tanggal akhir periode dari tanggal transaksi terbaru (max) di CSV.
+        const dateKey = parsed.mapping.date;
+        const latestDate = dateKey
+          ? result.data.reduce<string>((max, row) => {
+              const d = row[dateKey] ?? "";
+              return d > max ? d : max;
+            }, "")
+          : "";
+        setMeta((m) => ({
+          ...m,
+          ...(source === "BANK" ? { endingBankBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBankBalance }
+                                : { endingBookBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBookBalance }),
+          // Hanya auto-isi periodEndDate jika masih kosong.
+          ...(latestDate && !m.periodEndDate ? { periodEndDate: latestDate } : {}),
+        }));
       },
     });
+  }
+
+  // Saat mapping balance diubah, perbarui saldo akhir otomatis dari baris terakhir.
+  function handleMappingChange(itemLabel: "Bank" | "Buku", parsed: ParsedFile, val: string | null, role: ColumnRole) {
+    const updated = { ...parsed, mapping: { ...parsed.mapping, [role]: val } };
+    if (itemLabel === "Bank") setBank(updated); else setBook(updated);
+    // Jika mengubah kolom balance, refresh saldo akhir sesuai baris terakhir.
+    if (role === "balance" && val) {
+      const last = parsed.rows[parsed.rows.length - 1];
+      if (last) {
+        const saldo = Math.abs(parseIndonesianCurrency(last[val]));
+        setMeta((m) => itemLabel === "Bank" ? { ...m, endingBankBalance: saldo } : { ...m, endingBookBalance: saldo });
+      }
+    }
   }
 
   function buildTransactions(parsed: ParsedFile, source: "BANK" | "BOOK") {
@@ -155,13 +180,14 @@ export default function NewSessionPage() {
         <h3 className="mb-4 text-sm font-semibold text-slate-900">Metadata Sesi</h3>
         <div className="grid gap-4 md:grid-cols-3">
           {([
-            ["companyName", "Nama Perusahaan"], ["bankAccountName", "Nama Rekening Bank"],
-            ["periodLabel", "Periode (mis. Oktober 2026)"], ["periodEndDate", "Tanggal Akhir Periode (YYYY-MM-DD)"],
-            ["preparedBy", "Prepared By"], ["reviewedBy", "Reviewed By"],
-          ] as const).map(([key, label]) => (
+            ["companyName", "Nama Perusahaan", "text"], ["bankAccountName", "Nama Rekening Bank", "text"],
+            ["periodLabel", "Periode (mis. Oktober 2026)", "text"], ["periodEndDate", "Tanggal Akhir Periode", "date"],
+            ["preparedBy", "Prepared By", "text"], ["reviewedBy", "Reviewed By", "text"],
+          ] as const).map(([key, label, type]) => (
             <label key={key} className="block">
               <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
               <input
+                type={type}
                 value={meta[key]}
                 onChange={(e) => setMeta((m) => ({ ...m, [key]: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
@@ -196,11 +222,7 @@ export default function NewSessionPage() {
                       <span className="mb-1 block text-xs text-slate-500">{role}</span>
                       <select
                         value={p.mapping[role] ?? ""}
-                        onChange={(e) => {
-                          const val = e.target.value || null;
-                          const updated = { ...p, mapping: { ...p.mapping, [role]: val } };
-                          if (item!.label === "Bank") setBank(updated); else setBook(updated);
-                        }}
+                        onChange={(e) => handleMappingChange(item!.label as "Bank" | "Buku", p, e.target.value || null, role)}
                         className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-indigo-500"
                       >
                         <option value="">— (abaikan) —</option>
