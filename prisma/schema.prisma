@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Default SQLite untuk zero-config local/VPS deployment.
+  // Untuk PostgreSQL (Vercel/Neon/Supabase), ubah provider menjadi "postgresql"
+  // dan set DATABASE_URL di .env.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model ReconciliationSession {
+  id                    String   @id @default(cuid())
+  companyName           String
+  bankAccountName       String
+  periodLabel           String   // Contoh: "Oktober 2026"
+  periodEndDate         String   // ISO YYYY-MM-DD, contoh: "2026-10-31"
+  preparedBy            String   @default("Tim Keuangan")
+  reviewedBy            String   @default("Manajer Keuangan")
+  status                String   @default("DRAFT") // DRAFT | BALANCED | FINALIZED
+  demoScenarioKey       String?  // null | "umkm" | "ecommerce" | "audit"
+
+  // Saldo disimpan sebagai Float (exact integer Rupiah hingga 9 kuadriliun)
+  openingBalance        Float    @default(0)
+  endingBankBalance     Float
+  endingBookBalance     Float
+
+  // Konfigurasi matching engine tersimpan per sesi
+  dateToleranceDays     Int      @default(3)
+  amountToleranceRupiah Float    @default(0)
+  minFuzzyScore         Float    @default(0.35)
+  detectTransposition   Boolean  @default(true)
+
+  transactions          Transaction[]
+  matches               MatchPair[]
+  adjustments           ClassifiedAdjustment[]
+  auditLogs             AuditLog[]
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Transaction {
+  id             String   @id @default(cuid())
+  sessionId      String
+  session        ReconciliationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  source         String   // "BANK" | "BOOK"
+  rowIndex       Int      // Urutan baris asli CSV
+  date           String   // ISO YYYY-MM-DD
+  reference      String   @default("")
+  description    String
+  normalizedDesc String
+  direction      String   // "IN" | "OUT"
+  amount         Float    // Selalu positif (integer Rupiah)
+  runningBalance Float?
+  counterAccount String?  // Akun lawan (khusus BOOK)
+
+  bankMatch      MatchPair?            @relation("BankTransactionMatch")
+  bookMatch      MatchPair?            @relation("BookTransactionMatch")
+  adjustment     ClassifiedAdjustment?
+
+  createdAt      DateTime @default(now())
+
+  @@index([sessionId, source])
+}
+
+model MatchPair {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         ReconciliationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  bankTxId        String   @unique
+  bankTx          Transaction @relation("BankTransactionMatch", fields: [bankTxId], references: [id], onDelete: Cascade)
+
+  bookTxId        String   @unique
+  bookTx          Transaction @relation("BookTransactionMatch", fields: [bookTxId], references: [id], onDelete: Cascade)
+
+  status          String   // EXACT_MATCH | SUGGESTED_MATCH | MANUAL_MATCH | DISCREPANCY_MATCH
+  confidenceScore Int      // 0 - 100
+  reasonsJson     String   // JSON string array: string[]
+  amountDiff      Float    @default(0) // bankTx.amount - bookTx.amount
+  dateDiffDays    Int      @default(0)
+  isConfirmed     Boolean  @default(false)
+
+  adjustment      ClassifiedAdjustment?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sessionId, status])
+}
+
+model ClassifiedAdjustment {
+  id                String   @id @default(cuid())
+  sessionId         String
+  session           ReconciliationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Terhubung ke salah satu: transactionId (untuk UNMATCHED) ATAU matchPairId (untuk DISCREPANCY_MATCH)
+  transactionId     String?  @unique
+  transaction       Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  matchPairId       String?  @unique
+  matchPair         MatchPair? @relation(fields: [matchPairId], references: [id], onDelete: Cascade)
+
+  side              String   // "BANK" | "BOOK"
+  category          String   // Lihat tabel AdjustmentCategory
+  signedAmount      Float    // Positif (+) menambah saldo sisi tsb, Negatif (-) mengurangi
+  description       String
+  contraAccountName String?  // Akun lawan COA untuk jurnal penyesuaian (khusus side === "BOOK")
+  auditNote         String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([sessionId, side])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   ReconciliationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  action    String   // SESSION_CREATED | AUTO_MATCH_RUN | MATCH_APPROVED | MATCH_REJECTED | MANUAL_PAIRED | UNMATCHED | ADJUSTMENT_CREATED | ADJUSTMENT_UPDATED | ADJUSTMENT_DELETED | SESSION_FINALIZED | SESSION_REOPENED
+  summary   String
+  metadata  String?  // Optional JSON string
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
