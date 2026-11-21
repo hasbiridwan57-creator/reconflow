@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, type HydratedSessionResponse } from "@/lib/api/client";
 import { formatIDR } from "@/lib/format";
@@ -121,6 +121,14 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
   const [reviewedBy, setReviewedBy] = useState(data.session.reviewedBy);
   const isBalanced = data.summary.isBalanced;
   const finalized = data.session.status === "FINALIZED";
+
+  // Escape menutup modal Blok Tanda Tangan.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setOpen(false); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   async function doExportPdf() {
     try {

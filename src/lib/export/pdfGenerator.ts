@@ -47,11 +47,12 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
   const kpiGap = 3;
   const kpiW = (pageW - 28 - kpiGap * 3) / 4;
   const kpis: { label: string; value: string }[] = [
-    { label: "Saldo Akhir Bank", value: formatIDR(meta.endingBankBalance) },
-    { label: "Saldo Akhir Buku", value: formatIDR(meta.endingBookBalance) },
-    { label: "Saldo Kas Benar (Bank / Buku)", value: `${formatIDR(s.adjustedBankBalance)} / ${formatIDR(s.adjustedBookBalance)}` },
-    { label: "Selisih (Variance)", value: s.isBalanced ? "Rp 0" : formatIDR(s.variance) },
+    { label: "Saldo Akhir Bank", value: `Rp ${formatIDR(meta.endingBankBalance)}` },
+    { label: "Saldo Akhir Buku", value: `Rp ${formatIDR(meta.endingBookBalance)}` },
+    { label: "", value: "" }, // #3 dirender khusus (1 atau 2 baris).
+    { label: "Selisih (Variance)", value: `Rp ${formatIDR(s.variance)}` },
   ];
+  const kasBenar = s.isBalanced || s.adjustedBankBalance === s.adjustedBookBalance;
   doc.setFontSize(8);
   kpis.forEach((k, i) => {
     const kx = 14 + i * (kpiW + kpiGap);
@@ -62,12 +63,44 @@ export function generatePdf(session: HydratedSessionResponse): Uint8Array {
     doc.setFont("helvetica", "normal");
     doc.setTextColor(100, 116, 139);
     doc.text(k.label, kx + 2.5, kpiY + 5);
+
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
-    // Rapatkan teks agar muat di kotak.
-    const vText = doc.getTextWidth(k.value) > kpiW - 4 ? `${k.value.slice(0, 14)}…` : k.value;
-    doc.text(vText, kx + 2.5, kpiY + 11);
+
+    if (i === 2) {
+      // Kotak KPI #3 — Saldo Kas Benar (balanced) ATAU Saldo Disesuaikan (2 baris).
+      if (kasBenar) {
+        doc.text("Saldo Kas Benar", kx + 2.5, kpiY + 5);
+        doc.setFontSize(9);
+        doc.setTextColor(15, 23, 42);
+        doc.text(`Rp ${formatIDR(s.adjustedBankBalance)}`, kx + 2.5, kpiY + 11);
+      } else {
+        doc.text("Saldo Disesuaikan", kx + 2.5, kpiY + 5);
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(`Bank: Rp ${formatIDR(s.adjustedBankBalance)}`, kx + 2.5, kpiY + 8.5);
+        doc.text(`Buku: Rp ${formatIDR(s.adjustedBookBalance)}`, kx + 2.5, kpiY + 12.2);
+      }
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      return;
+    }
+
+    if (i === 3) {
+      // Kotak KPI #4 — warna sesuai variance.
+      doc.setTextColor(...(s.variance === 0 ? ([5, 150, 105] as [number, number, number]) : ([225, 29, 72] as [number, number, number])));
+    } else {
+      doc.setTextColor(15, 23, 42);
+    }
+
+    doc.setFontSize(9);
+    // Adaptif: kecilkan font bila melebihi lebar kotak — JANGAN potong digit.
+    let fontSize = 9;
+    while (fontSize > 7 && doc.getTextWidth(k.value) > kpiW - 4) {
+      fontSize -= 0.5;
+      doc.setFontSize(fontSize);
+    }
+    doc.text(k.value, kx + 2.5, kpiY + 11);
     doc.setFontSize(8);
   });
   doc.setTextColor(0, 0, 0);

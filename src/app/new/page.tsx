@@ -63,6 +63,31 @@ function autoMap(headers: string[]): Record<ColumnRole, string | null> {
   return mapping;
 }
 
+/** Cek apakah 1 baris = transaksi valid (tanggal valid + nominal > 0). Pure, tanpa toast. */
+function isTxRowValid(row: Record<string, string>, mapping: Record<ColumnRole, string | null>): boolean {
+  const date = parseFlexibleDate(mapping.date ? row[mapping.date] : "") ?? "";
+  if (!date) return false;
+  const debit = parseIndonesianCurrency(mapping.debit ? row[mapping.debit] : 0);
+  const kredit = parseIndonesianCurrency(mapping.credit ? row[mapping.credit] : 0);
+  const amount = Math.abs(debit) > 0 ? Math.abs(debit) : Math.abs(kredit);
+  return amount > 0;
+}
+
+/** Preview kesehatan file: hitung valid vs dilewati dari mapping aktif. */
+function fileHealth(rows: Record<string, string>[], mapping: Record<ColumnRole, string | null>): { validCount: number; skippedCount: number } {
+  let validCount = 0, skippedCount = 0;
+  rows.forEach((row) => (isTxRowValid(row, mapping) ? validCount++ : skippedCount++));
+  return { validCount, skippedCount };
+}
+
+/** Cari baris transaksi valid TERAKHIR (dari belakang) — hindari baris footer "TOTAL". */
+function lastValidRow(rows: Record<string, string>[], mapping: Record<ColumnRole, string | null>): Record<string, string> | null {
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    if (isTxRowValid(rows[i], mapping)) return rows[i];
+  }
+  return null;
+}
+
 function Dropzone({ label, parsed, onFile, template, templateName }: {
   label: string;
   parsed: ParsedFile | null;
@@ -70,9 +95,26 @@ function Dropzone({ label, parsed, onFile, template, templateName }: {
   template: string;
   templateName: string;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
   const missingRoles = parsed
     ? REQUIRED_ROLES.filter((r) => !parsed.mapping[r])
     : [];
+  const health = parsed ? fileHealth(parsed.rows, parsed.mapping) : null;
+
+  function validateExt(file: File): boolean {
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith(".csv") || lower.endsWith(".xlsx")) return true;
+    toast.error(`Format ${file.name} tidak didukung. Gunakan .csv atau .xlsx.`);
+    return false;
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f && validateExt(f)) onFile(f);
+  }
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
@@ -81,14 +123,23 @@ function Dropzone({ label, parsed, onFile, template, templateName }: {
           <FileDown className="h-3.5 w-3.5" /> Template
         </button>
       </div>
-      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 py-8 transition hover:border-teal-400 hover:bg-slate-50">
-        <Upload className="mb-2 h-6 w-6 text-slate-400" />
+      <label
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition ${isDragging ? "border-teal-500 bg-teal-50/50" : "border-slate-300 hover:border-teal-400 hover:bg-slate-50"}`}
+      >
+        <Upload className={`mb-2 h-6 w-6 ${isDragging ? "text-teal-500" : "text-slate-400"}`} />
         <span className="text-sm text-slate-600">{parsed ? parsed.fileName : "Klik atau tarik file .csv atau .xlsx di sini"}</span>
-        <input type="file" accept=".csv,.xlsx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+        <input type="file" accept=".csv,.xlsx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f && validateExt(f)) onFile(f); }} />
       </label>
-      {parsed && (
+      {parsed && health && (
         <div className="mt-3 space-y-1 text-xs">
-          <div className="text-emerald-600">✓ {parsed.rows.length} baris · {parsed.headers.length} kolom terdeteksi.</div>
+          <div className="text-emerald-600">
+            ✓ {health.validCount} transaksi valid siap diproses
+            {health.skippedCount > 0 && <span className="text-slate-500"> · {health.skippedCount} baris footer/kosong akan dilewati</span>}
+          </div>
+          <div className="text-slate-500">{parsed.rows.length} baris · {parsed.headers.length} kolom terdeteksi.</div>
           {missingRoles.length > 0 ? (
             <div className="text-amber-600">⚠ Kolom wajib belum terdeteksi: {missingRoles.join(", ")}</div>
           ) : (
@@ -134,12 +185,14 @@ export default function NewSessionPage() {
           return iso > max ? iso : max;
         }, "")
       : "";
-    const last = rows[rows.length - 1];
+    // Tahan baris footer: ambil baris transaksi valid TERAKHIR, bukan rows[length-1] buta.
+    const last = lastValidRow(rows, mapping);
+    const saldo = last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey] ?? "")) : null;
     setMeta((m) => ({
       ...m,
       ...(source === "BANK"
-        ? { endingBankBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBankBalance }
-        : { endingBookBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBookBalance }),
+        ? { endingBankBalance: saldo ?? m.endingBankBalance }
+        : { endingBookBalance: saldo ?? m.endingBookBalance }),
       ...(latestDate && !m.periodEndDate ? { periodEndDate: latestDate } : {}),
     }));
   }
@@ -167,9 +220,10 @@ export default function NewSessionPage() {
     const updated = { ...parsed, mapping: { ...parsed.mapping, [role]: val } };
     if (itemLabel === "Bank") setBank(updated); else setBook(updated);
     if (role === "balance" && val) {
-      const last = parsed.rows[parsed.rows.length - 1];
+      // Tahan baris footer — ambil baris transaksi valid terakhir.
+      const last = lastValidRow(parsed.rows, updated.mapping);
       if (last) {
-        const saldo = Math.abs(parseIndonesianCurrency(last[val]));
+        const saldo = Math.abs(parseIndonesianCurrency(last[val] ?? ""));
         setMeta((m) => itemLabel === "Bank" ? { ...m, endingBankBalance: saldo } : { ...m, endingBookBalance: saldo });
       }
     }
@@ -190,8 +244,8 @@ export default function NewSessionPage() {
       const counterAccount = m.counterAccount ? row[m.counterAccount] || null : null;
       const direction = source === "BANK" ? (kredit > 0 ? "IN" : "OUT") : (debit > 0 ? "IN" : "OUT");
       const amount = Math.abs(debit) > 0 ? Math.abs(debit) : Math.abs(kredit);
-      // Saring baris kotor/footer (mis. "TOTAL"): tanpa tanggal valid ATAU amount ≤ 0.
-      if (!date || amount <= 0) { skipped += 1; return; }
+      // Konsisten dengan preview: saring baris tanpa tanggal valid ATAU amount ≤ 0 (footer/kosong).
+      if (!isTxRowValid(row, m)) { skipped += 1; return; }
       cleaned.push({ source, rowIndex: i, date, reference, description, direction, amount, runningBalance: Math.abs(saldo), counterAccount: source === "BOOK" ? counterAccount : null });
     });
     if (skipped > 0) {
@@ -231,13 +285,13 @@ export default function NewSessionPage() {
 
   return (
     <AppShell>
-      <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">Impor Dual CSV</h1>
+      <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">Impor Data Mutasi (CSV / Excel)</h1>
       <p className="mb-6 text-sm text-slate-600">Unggah Rekening Koran Bank &amp; Buku Kas Perusahaan, lalu jalankan auto-match.</p>
 
       {/* Langkah 1 — Dual dropzone */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Dropzone label="1a. Rekening Koran Bank (.csv)" parsed={bank} onFile={(f) => handleFile(f, "BANK")} template={BANK_TEMPLATE} templateName="template_bank.csv" />
-        <Dropzone label="1b. Buku Kas Perusahaan (.csv)" parsed={book} onFile={(f) => handleFile(f, "BOOK")} template={BOOK_TEMPLATE} templateName="template_buku.csv" />
+        <Dropzone label="1a. Rekening Koran Bank (.csv / .xlsx)" parsed={bank} onFile={(f) => handleFile(f, "BANK")} template={BANK_TEMPLATE} templateName="template_bank.csv" />
+        <Dropzone label="1b. Buku Kas Perusahaan (.csv / .xlsx)" parsed={book} onFile={(f) => handleFile(f, "BOOK")} template={BOOK_TEMPLATE} templateName="template_buku.csv" />
       </div>
 
       {/* Langkah 2 — Metadata */}

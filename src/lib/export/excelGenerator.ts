@@ -75,6 +75,7 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
       if (ms === "EXACT_MATCH") return "Cocok Persis";
       if (ms === "SUGGESTED_MATCH") return "Saran";
       if (ms === "MANUAL_MATCH") return "Manual";
+      if (ms === "DISCREPANCY_MATCH") return "Selisih";
       return ms;
     }
     return "Belum Cocok";

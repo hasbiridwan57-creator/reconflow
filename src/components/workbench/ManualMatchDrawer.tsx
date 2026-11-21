@@ -91,7 +91,23 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
       const body: Record<string, unknown> = { bankTxId, bookTxId };
       if (diff !== 0) body.discrepancyResolution = { faultSide };
       const updated = await api.manualPair(data.session.id, body);
-      toast.success("Pasangan manual dibuat.");
+      const sessionId = data.session.id;
+      const createdMatchId = updated.matches.find((m) => m.bankTx.id === bankTxId && m.bookTx.id === bookTxId)?.id;
+      toast.success("Pasangan manual dibuat.", createdMatchId ? {
+        duration: 6000,
+        action: {
+          label: "Urungkan",
+          onClick: async () => {
+            try {
+              const reverted = await api.deleteMatch(sessionId, createdMatchId);
+              onRefresh(reverted);
+              toast.info("Pasangan dibatalkan.");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Gagal membatalkan.");
+            }
+          },
+        },
+      } : undefined);
       onRefresh(updated);
       onClose();
     } catch (e) {

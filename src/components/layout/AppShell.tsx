@@ -42,7 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       // Optimasi: jika event membawa HydratedSessionResponse, perbarui baris
       // sesi yang sudah ada DI MEMORI tanpa GET /api/sessions.
       const detail = (e as CustomEvent).detail as
-        | { id?: string; session?: { id: string; status: string; demoScenarioKey: string | null; endingBankBalance: number; endingBookBalance: number }; summary?: { variance: number; unclassifiedCount: number } }
+        | { id?: string; session?: { id: string; status: string; demoScenarioKey: string | null; endingBankBalance: number; endingBookBalance: number }; summary?: { variance: number; unclassifiedCount: number; matchRate?: number } }
         | { id: string }
         | undefined;
       const sid = detail && "session" in detail ? detail.session?.id : (detail as { id: string } | undefined)?.id;
@@ -59,6 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             endingBookBalance: s.endingBookBalance,
             variance: detail.summary?.variance ?? prev[idx].variance,
             unclassifiedCount: detail.summary?.unclassifiedCount ?? prev[idx].unclassifiedCount,
+            matchRate: detail.summary?.matchRate ?? prev[idx].matchRate,
           };
           const next = [...prev];
           next[idx] = updated;

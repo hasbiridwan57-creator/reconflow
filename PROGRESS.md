@@ -192,3 +192,24 @@
 ### Bagian C — Test & Gate
 - [x] Test baru: `match-ranking.test.ts` (invalid dates), `engine.spreadsheet.test.ts` (ExcelJS buffer), `export.status.test.ts` (Excel status kolom, PDF balanced & draft).
 - [x] Gate hijau: `prisma validate` ✓ · `prisma generate` ✓ · tsc 0 · lint 0 · **121 pass + 1 skip** · build 0.
+
+## Putaran: AUDIT FIXES & UX COMFORT UPGRADE (`c15ea4d` →)
+### Bagian A — Penutupan 5 Temuan Audit
+- [x] `matchRate` ikut live-sync di sidebar `AppShell` via listener `reconflow:sessions-changed`.
+- [x] PDF `pdfGenerator`: HAPUS `.slice(0,14)+"…"` pada kotak KPI #3; seragamkan prefix `"Rp "` semua kotak; Kotak #3 tampil 2 baris kompak 7.5pt bila belum seimbang; Kotak #4 selisih berwarna emerald/rose; nilai 1-baris shrink adaptif ke 7.5pt bila overflow (tanpa memotong digit).
+- [x] Excel `statusLabel()` tambah `DISCREPANCY_MATCH` → `"Selisih"` (tanpa kode enum mentah).
+- [x] `spreadsheet.ts` `cellToString()`: hyperlink → teks/URL, error cell → string kosong (bukan `[object Object]`).
+- [x] Polish modal klaim bank di `AnomalyTxCard`: Escape menutup, subjek editable (`claimSubjectText`), salam pembuka formal "Kepada Yth. Tim Layanan Nasabah / CS ...".
+
+### Bagian B — UX Comfort
+- [x] Tombol **Urungkan** di toast: `RoutineCard.classify`, `AnomalyTxCard.classify`, `AnomalyCard.approve`, `SuggestedCardList.approve`, `SplitPairView.pair`, `ManualMatchDrawer.pair` (panggil `api.deleteAdjustment`/`api.deleteMatch`, durasi 6 detik, tanpa `setLoading`).
+- [x] `/new`: judul jadi "Impor Data Mutasi (CSV / Excel)", label "1a. Rekening Koran Bank (.csv / .xlsx)" & "1b. Buku Kas Perusahaan (.csv / .xlsx)", drag-and-drop nyata (border-teal + bg-teal-50/50 saat hover), validasi ekstensi `.csv`/`.xlsx`, fix auto-fill saldo akhir pakai `lastValidRow` (bukan baris footer), preview kesehatan file live (`✓ N transaksi valid · M baris dilewati`).
+- [x] Meja Rekonsiliasi: search bar (icon Search, tombol X clear, shortcut `/`) + sort dropdown (Default / Nominal Terbesar / Tanggal Terbaru / Terlama) di Seksi 3, diterapkan di List View & `SplitPairView` via helper `applySearchSort`.
+- [x] Cermin Saldo: `@keyframes rf-flash` (globals.css) + `key={s.variance}` pada nominal Selisih.
+- [x] Konsistensi Esc: Settings Drawer (`workspace/[id]/page.tsx`) & Modal Blok Tanda Tangan (`ReportComponents.tsx` ExportActionBar).
+- [x] Header workspace rapat `mb-3.5`, KPI strip `p-2.5`, tabs `mb-4` (laptop 13" above the fold).
+- [x] Beranda: strip 3 langkah ringkas horizontal antara header & demo cards.
+
+### Bagian C — Test & Gate
+- [x] Test baru (+4): `engine.spreadsheet.test.ts` hyperlink & error-cell; `export.status.test.ts` DISCREPANCY_MATCH → "Selisih" & PDF nominal besar (389.296.000 vs 405.160.000) tanpa "…".
+- [x] Gate hijau: `prisma validate` ✓ · `prisma generate` ✓ · tsc 0 · lint 0 · **125 pass + 1 skip (126)** · build 0.

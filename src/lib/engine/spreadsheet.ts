@@ -10,8 +10,8 @@ export interface ParsedSheet {
   rows: Record<string, string>[];
 }
 
-/** Konversi 1 cell ExcelJS ke string bersih. */
-function cellToString(cell: ExcelJS.Cell): string {
+/** Konversi 1 cell ExcelJS ke string bersih (diekspor utk test unit). */
+export function cellToString(cell: ExcelJS.Cell): string {
   const v = cell.value;
   if (v === null || v === undefined) return "";
   if (v instanceof Date) return v.toISOString().slice(0, 10);
@@ -22,6 +22,14 @@ function cellToString(cell: ExcelJS.Cell): string {
     const r = v.result;
     if (r instanceof Date) return r.toISOString().slice(0, 10);
     return String(r ?? "").trim();
+  }
+  // Cell hyperlink: utamakan teks tampilan, fallback ke URL.
+  if (typeof v === "object" && "hyperlink" in v) {
+    return String(("text" in v && v.text) || v.hyperlink || "").trim();
+  }
+  // Cell error (mis. #DIV/0!) → string kosong, bukan "[object Object]".
+  if (typeof v === "object" && "error" in v) {
+    return "";
   }
   return String(v).trim();
 }

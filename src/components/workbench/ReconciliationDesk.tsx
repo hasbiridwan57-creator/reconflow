@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, type HydratedSessionResponse } from "@/lib/api/client";
 import { formatIDR, formatDateID, formatPercent } from "@/lib/format";
@@ -14,7 +14,7 @@ import { rankMatchCandidates, type RankCandidateTx } from "@/lib/engine/matchRan
 import { getAdjustmentImpactLabel, getAdjustmentSide, getSignedAmount } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Link2, Lock, Unlock, X, List, Columns2, Mail, Copy } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Link2, Lock, Unlock, X, List, Columns2, Mail, Copy, Search } from "lucide-react";
 import { ConfirmedMatchesTab } from "@/components/workbench/WorkbenchComponents";
 import { ManualMatchDrawer } from "@/components/workbench/ManualMatchDrawer";
 
@@ -58,8 +58,23 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
           ...(faultSide === "BOOK" && contraAccount ? { contraAccountName: contraAccount } : {}),
         },
       });
-      toast.success("Anomali diselesaikan.");
-      onRefresh(updated);
+      const sessionId = data.session.id;
+      const createdMatchId = updated.matches.find((m) => m.bankTx.id === match.bankTx.id && m.bookTx.id === match.bookTx.id)?.id;
+      toast.success("Anomali diselesaikan.", createdMatchId ? {
+        duration: 6000,
+        action: {
+          label: "Urungkan",
+          onClick: async () => {
+            try {
+              const reverted = await api.deleteMatch(sessionId, createdMatchId);
+              onRefresh(reverted);
+              toast.info("Penyelesaian dibatalkan.");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Gagal membatalkan.");
+            }
+          },
+        },
+      } : undefined);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
@@ -195,7 +210,24 @@ function SplitPairView({
       const body: Record<string, unknown> = { bankTxId: selBank.id, bookTxId: selBook.id };
       if (diff !== 0) body.discrepancyResolution = { faultSide };
       const updated = await api.manualPair(data.session.id, body);
-      toast.success("Pasangan manual dibuat.");
+      const sessionId = data.session.id;
+      const bankTxId = selBank.id, bookTxId = selBook.id;
+      const createdMatchId = updated.matches.find((m) => m.bankTx.id === bankTxId && m.bookTx.id === bookTxId)?.id;
+      toast.success("Pasangan manual dibuat.", createdMatchId ? {
+        duration: 6000,
+        action: {
+          label: "Urungkan",
+          onClick: async () => {
+            try {
+              const reverted = await api.deleteMatch(sessionId, createdMatchId);
+              onRefresh(reverted);
+              toast.info("Pasangan dibatalkan.");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Gagal membatalkan.");
+            }
+          },
+        },
+      } : undefined);
       setSelection({ bankId: null, bookId: null });
       onRefresh(updated);
     } catch (e) {
@@ -312,9 +344,25 @@ function RoutineCard({
 
   async function classify(category: AdjustmentCategory) {
     setLoading(true);
+    const sessionId = data.session.id;
     try {
-      const updated = await api.createAdjustment(data.session.id, { transactionId: tx.id, category, description: tx.description });
-      toast.success("Diklasifikasi.");
+      const updated = await api.createAdjustment(sessionId, { transactionId: tx.id, category, description: tx.description });
+      const createdAdjId = updated.adjustments.find((a) => a.transactionId === tx.id)?.id;
+      toast.success("Transaksi diklasifikasi.", createdAdjId ? {
+        duration: 6000,
+        action: {
+          label: "Urungkan",
+          onClick: async () => {
+            try {
+              const reverted = await api.deleteAdjustment(sessionId, createdAdjId);
+              onRefresh(reverted);
+              toast.info("Klasifikasi dibatalkan.");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Gagal membatalkan.");
+            }
+          },
+        },
+      } : undefined);
       onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
@@ -397,7 +445,7 @@ function BalanceMirror({ data, onGoReport }: { data: HydratedSessionResponse; on
         <span className={`inline-block rounded-full px-4 py-1.5 text-sm font-bold ${s.isBalanced ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
           {s.isBalanced ? "✓ BALANCED (Rp 0)" : "BELUM SEIMBANG"}
         </span>
-        <div className={`mt-2 font-mono text-2xl tabular-nums font-bold ${s.variance === 0 ? "text-emerald-600" : "text-rose-600"}`}>
+        <div key={s.variance} className={`rf-flash mt-2 rounded font-mono text-2xl tabular-nums font-bold ${s.variance === 0 ? "text-emerald-600" : "text-rose-600"}`}>
           {formatIDR(s.variance)}
         </div>
       </div>
@@ -466,6 +514,29 @@ function formatIDRAccountingShort(n: number): string {
   return n > 0 ? `+${formatIDR(n)}` : `-${formatIDR(Math.abs(n))}`;
 }
 
+/** Cocokkan 1 tx dengan query pencarian (deskripsi, referensi, tanggal, nominal). Guard digits>0. */
+function txMatchesSearch(tx: TransactionDTO, q: string): boolean {
+  const query = q.trim().toLowerCase();
+  if (!query) return true;
+  const hay = [tx.description, tx.reference || "", tx.date, formatIDR(tx.amount), tx.amount.toString()].join(" ").toLowerCase();
+  // Angka: hanya cocok bila query punya digit (hindari false positive "a" vs nominal).
+  const digits = query.replace(/\D/g, "");
+  if (digits.length > 0 && hay.includes(digits)) return true;
+  if (digits.length === 0 && hay.includes(query)) return true;
+  // Fallback: cocokkan substring non-angka di deskripsi/referensi.
+  return hay.includes(query);
+}
+
+/** Sortir tx sesuai mode terpilih. */
+function sortTx(list: TransactionDTO[], mode: "DEFAULT" | "AMOUNT_DESC" | "DATE_DESC" | "DATE_ASC"): TransactionDTO[] {
+  if (mode === "DEFAULT") return list;
+  const arr = [...list];
+  if (mode === "AMOUNT_DESC") arr.sort((a, b) => b.amount - a.amount);
+  else if (mode === "DATE_DESC") arr.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  else arr.sort((a, b) => (a.date > b.date ? 1 : a.date < b.date ? -1 : 0));
+  return arr;
+}
+
 /* ---------- Accordion ---------- */
 function Accordion({ title, count, children, defaultOpen = false }: { title: string; count: number; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -496,6 +567,24 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   const [splitSel, setSplitSel] = useState<{ bankId: string | null; bookId: string | null }>({ bankId: null, bookId: null });
   const [drawerSource, setDrawerSource] = useState<TransactionDTO | null>(null);
   const [reopening, setReopening] = useState(false);
+  const [txSearch, setTxSearch] = useState("");
+  const [txSort, setTxSort] = useState<"DEFAULT" | "AMOUNT_DESC" | "DATE_DESC" | "DATE_ASC">("DEFAULT");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Shortcut "/" → fokus kotak pencarian transaksi (kecuali saat fokus di input/modal).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/") return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (drawerSource || showBatchConfirm) return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerSource, showBatchConfirm]);
 
   // Suggested yang belum dikonfirmasi.
   const suggestedPending = data.matches.filter((m) => !m.isConfirmed && m.status === "SUGGESTED_MATCH");
@@ -550,7 +639,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   }, [data, adjTxIds, matchedBankTxs]);
 
   // Filter seksi rutin berdasarkan tab triage.
-  const filteredRoutine = {
+  const triagedRoutine = {
     bank: unmatchedRoutine.bank.filter((tx) => {
       if (triage === "BOOK") return false;
       if (triage === "NEED_PAIR" || triage === "BANK_ADJ") {
@@ -567,6 +656,11 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       }
       return true;
     }),
+  };
+  // Terapkan pencarian + sortir konsisten untuk List & SplitPairView.
+  const filteredRoutine = {
+    bank: sortTx(triagedRoutine.bank.filter((tx) => txMatchesSearch(tx, txSearch)), txSort),
+    book: sortTx(triagedRoutine.book.filter((tx) => txMatchesSearch(tx, txSearch)), txSort),
   };
 
   // Item bank-adjustment (rekomendasi auto-jurnal biaya/bunga bank) untuk batch.
@@ -788,6 +882,36 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
               </div>
             </div>
 
+            {/* Search + sort bar — konsisten untuk List & SplitPairView */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  ref={searchInputRef}
+                  value={txSearch}
+                  onChange={(e) => setTxSearch(e.target.value)}
+                  placeholder="Cari transaksi... (tekan /)"
+                  className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-xs outline-none focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500"
+                />
+                {txSearch && (
+                  <button type="button" onClick={() => setTxSearch("")} aria-label="Bersihkan pencarian" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-teal-500">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <select
+                value={txSort}
+                onChange={(e) => setTxSort(e.target.value as typeof txSort)}
+                aria-label="Urutkan transaksi"
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500"
+              >
+                <option value="DEFAULT">Urutan Asli</option>
+                <option value="AMOUNT_DESC">Nominal Terbesar</option>
+                <option value="DATE_DESC">Tanggal Terbaru</option>
+                <option value="DATE_ASC">Tanggal Terlama</option>
+              </select>
+            </div>
+
             {/* Triage tabs — disembunyikan di mode split (tak memfilter SplitPairView) */}
             <div className={`flex flex-wrap items-center gap-2 ${viewMode === "split" ? "lg:hidden" : ""}`}>
               {([
@@ -976,9 +1100,9 @@ function AnomalyTxCard({
   const side = tx.source;
 
   // Template draft email sengketa — terisi deterministik dari data sesi & transaksi.
-  const claimSubject = `Sengketa Transaksi ${tx.reference || tx.description} — ${formatIDR(tx.amount)}`;
+  const defaultSubject = `Sengketa Transaksi ${tx.reference || tx.description} — ${formatIDR(tx.amount)}`;
   const claimBody = [
-    `Kepada Yth. ${data.session.bankAccountName},`,
+    `Kepada Yth. Tim Layanan Nasabah / Customer Service (${data.session.bankAccountName}),`,
     "",
     `Perihal: Sengketa transaksi pada rekening ${data.session.bankAccountName} atas nama ${data.session.companyName}, periode ${data.session.periodLabel}.`,
     "",
@@ -998,10 +1122,24 @@ function AnomalyTxCard({
     `${data.session.preparedBy} — ${data.session.companyName}`,
   ].join("\n");
   const [claimText, setClaimText] = useState(claimBody);
+  const [claimSubjectText, setClaimSubjectText] = useState(defaultSubject);
+
+  // Buka modal → reset ke default. Escape → tutup.
+  function openClaim() {
+    setClaimText(claimBody);
+    setClaimSubjectText(defaultSubject);
+    setShowClaim(true);
+  }
+  useEffect(() => {
+    if (!showClaim) return;
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setShowClaim(false); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showClaim]);
 
   async function copyClaim() {
     try {
-      await navigator.clipboard.writeText(`Subjek: ${claimSubject}\n\n${claimText}`);
+      await navigator.clipboard.writeText(`Subjek: ${claimSubjectText}\n\n${claimText}`);
       toast.success("Draft klaim disalin ke clipboard.");
     } catch {
       toast.error("Gagal menyalin. Salin manual dari kotak teks.");
@@ -1010,9 +1148,25 @@ function AnomalyTxCard({
 
   async function classify(category: AdjustmentCategory) {
     setLoading(true);
+    const sessionId = data.session.id;
     try {
-      const updated = await api.createAdjustment(data.session.id, { transactionId: tx.id, category, description: tx.description });
-      toast.success("Diklasifikasi.");
+      const updated = await api.createAdjustment(sessionId, { transactionId: tx.id, category, description: tx.description });
+      const createdAdjId = updated.adjustments.find((a) => a.transactionId === tx.id)?.id;
+      toast.success("Transaksi diklasifikasi.", createdAdjId ? {
+        duration: 6000,
+        action: {
+          label: "Urungkan",
+          onClick: async () => {
+            try {
+              const reverted = await api.deleteAdjustment(sessionId, createdAdjId);
+              onRefresh(reverted);
+              toast.info("Klasifikasi dibatalkan.");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Gagal membatalkan.");
+            }
+          },
+        },
+      } : undefined);
       onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
@@ -1054,7 +1208,7 @@ function AnomalyTxCard({
           ✓ {getCategoryLabel(suggestion.category)} · {suggestion.impactLabel}
         </button>
         <button type="button"
-          onClick={() => { setClaimText(claimBody); setShowClaim(true); }}
+          onClick={openClaim}
           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-500"
         >
           <Mail className="h-3.5 w-3.5" /> Buat Draft Klaim Bank
@@ -1086,7 +1240,7 @@ function AnomalyTxCard({
             </div>
             <label className="block">
               <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">Subjek</span>
-              <input value={claimSubject} readOnly className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none" />
+              <input value={claimSubjectText} onChange={(e) => setClaimSubjectText(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-500" />
             </label>
             <label className="mt-3 block flex-1">
               <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">Isi Email</span>
@@ -1114,7 +1268,27 @@ function SuggestedCardList({ data, onRefresh, suggestedPending }: { data: Hydrat
     setLoadingId(m.id);
     try {
       const updated = await api.approveMatch(data.session.id, m.id, { action });
-      toast.success(action === "APPROVE" ? "Cocokkan." : "Ditolak.");
+      const sessionId = data.session.id;
+      const createdMatchId = updated.matches.find((x) => x.bankTx.id === m.bankTx.id && x.bookTx.id === m.bookTx.id)?.id;
+      if (action === "APPROVE" && createdMatchId) {
+        toast.success("Cocokkan.", {
+          duration: 6000,
+          action: {
+            label: "Urungkan",
+            onClick: async () => {
+              try {
+                const reverted = await api.deleteMatch(sessionId, createdMatchId);
+                onRefresh(reverted);
+                toast.info("Pencocokan dibatalkan.");
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Gagal membatalkan.");
+              }
+            },
+          },
+        });
+      } else {
+        toast.success(action === "APPROVE" ? "Cocokkan." : "Ditolak.");
+      }
       onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");

@@ -54,4 +54,26 @@ describe("parseXlsx", () => {
     expect(headers).toEqual([]);
     expect(rows).toEqual([]);
   });
+
+  it("mengonversi cell hyperlink → teks (bukan [object Object])", async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("S");
+    ws.addRow(["Ref"]);
+    const row = ws.addRow([null]);
+    row.getCell(1).value = { text: "INV-99", hyperlink: "https://example.com" };
+    const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
+    const { rows } = await parseXlsx(buf);
+    expect(rows[0]["Ref"]).toBe("INV-99");
+  });
+
+  it("mengonversi cell error → string kosong", async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("S");
+    ws.addRow(["Nilai"]);
+    const row = ws.addRow([null]);
+    row.getCell(1).value = { error: "#DIV/0!" };
+    // Cell error tak persist lewat writeBuffer (batasan ExcelJS) — test langsung helper.
+    const { cellToString } = await import("@/lib/engine/spreadsheet");
+    expect(cellToString(row.getCell(1))).toBe("");
+  });
 });

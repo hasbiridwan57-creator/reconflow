@@ -130,4 +130,42 @@ describe("generateExcel", () => {
     const statusVal = ws2!.getRow(2).getCell(6).value;
     expect(String(statusVal)).toBe("Cocok Persis");
   });
+
+  it("transaksi DISCREPANCY_MATCH tampil 'Selisih' bukan kode enum", async () => {
+    const s = draftSession();
+    // Tandai satu transaksi bank sebagai DISCREPANCY_MATCH.
+    s.bankTransactions[0].matchStatus = "DISCREPANCY_MATCH";
+    s.bankTransactions[0].adjustmentId = null;
+    const buf = await generateExcel(s);
+    const ExcelJS = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const ws2 = wb.getWorksheet("Transaksi Bank");
+    const statusVal = ws2!.getRow(2).getCell(6).value;
+    expect(String(statusVal)).toBe("Selisih");
+    expect(String(statusVal)).not.toMatch(/DISCREPANCY/i);
+  });
+});
+
+describe("generatePdf nominal besar", () => {
+  it("ratusan juta (389.296.000 vs 405.160.000, draft & balanced) → PDF valid tanpa error", () => {
+    const s = balancedSession();
+    s.session.endingBankBalance = 389_296_000;
+    s.session.endingBookBalance = 405_160_000;
+    s.summary.adjustedBankBalance = 389_296_000;
+    s.summary.adjustedBookBalance = 389_296_000;
+    s.summary.rawDifference = 0;
+    s.summary.variance = 0;
+    s.summary.isBalanced = true;
+    s.session.status = "DRAFT";
+    // Tidak boleh throw; angka tak boleh terpotong "…".
+    const buf = generatePdf(s);
+    expect(buf.byteLength).toBeGreaterThan(0);
+    const head = Buffer.from(buf).subarray(0, 5).toString();
+    expect(head).toBe("%PDF-");
+    // decode PDF stream & pastikan nominal besar utuh (tidak berakhir "…").
+    const text = Buffer.from(buf).toString("latin1");
+    expect(text).not.toMatch(/…/);
+    expect(text).toContain("389.296.000");
+  });
 });

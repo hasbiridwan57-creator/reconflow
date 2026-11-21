@@ -33,3 +33,15 @@ body {
 .double-underline {
   border-bottom: 4px double var(--color-slate-900);
 }
+
+/* Kilas halus di Cermin Saldo saat Selisih berubah — teal lembut → transparan 550ms. */
+@keyframes rf-flash {
+  0% { background-color: rgba(13, 148, 136, 0.18); }
+  100% { background-color: transparent; }
+}
+.rf-flash {
+  animation: rf-flash 550ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-flash { animation: none; }
+}
