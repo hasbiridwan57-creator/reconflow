@@ -76,8 +76,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
-      {/* Sidebar desktop */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+      {/* Sidebar desktop — sticky: tetap diam saat konten kanan di-scroll.
+          lg:h-screen + lg:self-start agar tidak ikut "stretch" setinggi flex row
+          (wrapper luar tetap `flex min-h-screen` supaya sticky BalanceMirror &
+          scroll native browser tidak rusak). */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:self-start">
         <SidebarContent pathname={pathname} sessions={sessions} />
       </aside>
 
@@ -181,8 +184,9 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* Seksi REKENING AKTIF */}
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
+      {/* Seksi REKENING AKTIF — min-h-0 + overflow-y-auto agar daftar bisa
+          di-scroll independen (Safari) tanpa mendorong footer keluar layar. */}
+      <div className="flex min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         <div className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
           Rekening Aktif
         </div>
