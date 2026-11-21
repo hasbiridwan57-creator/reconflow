@@ -10,10 +10,11 @@ import { api, type HydratedSessionResponse } from "@/lib/api/client";
 import { formatIDR, formatDateID, formatPercent } from "@/lib/format";
 import { getCategoryLabel } from "@/lib/engine/calculator";
 import { suggestAdjustmentCategory, type CategorySuggestion } from "@/lib/engine/suggester";
+import { rankMatchCandidates, type RankCandidateTx } from "@/lib/engine/matchRanking";
 import { getAdjustmentImpactLabel } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2, Lock, Unlock, X } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2, Lock, Unlock, X, List, Columns2 } from "lucide-react";
 import { ConfirmedMatchesTab } from "@/components/workbench/WorkbenchComponents";
 import { ManualMatchDrawer } from "@/components/workbench/ManualMatchDrawer";
 
@@ -142,6 +143,120 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Split View Berdampingan: Bank | Buku ---------- */
+function SplitPairView({
+  bankItems, bookItems, data, onRefresh, selection, setSelection, finalized,
+}: {
+  bankItems: TransactionDTO[];
+  bookItems: TransactionDTO[];
+  data: HydratedSessionResponse;
+  onRefresh: (updated?: HydratedSessionResponse) => void;
+  selection: { bankId: string | null; bookId: string | null };
+  setSelection: React.Dispatch<React.SetStateAction<{ bankId: string | null; bookId: string | null }>>;
+  finalized: boolean;
+}) {
+  const [loading, setLoading] = useState(false);
+  const selBank = bankItems.find((t) => t.id === selection.bankId) ?? null;
+  const selBook = bookItems.find((t) => t.id === selection.bookId) ?? null;
+
+  // Rekomendasi kandidat terbaik utk sisi bank terpilih.
+  const highlightBookId = useMemo(() => {
+    if (!selBank) return null;
+    const ranked = rankMatchCandidates(
+      { amount: selBank.amount, direction: selBank.direction as CashDirection, date: selBank.date },
+      bookItems as readonly RankCandidateTx[],
+      true,
+    );
+    return ranked[0]?.item.id ?? null;
+  }, [selBank, bookItems]);
+
+  const diff = selBank && selBook ? selBank.amount - selBook.amount : 0;
+
+  async function pair() {
+    if (!selBank || !selBook) return;
+    setLoading(true);
+    try {
+      const body: Record<string, unknown> = { bankTxId: selBank.id, bookTxId: selBook.id };
+      if (diff !== 0) body.discrepancyResolution = { faultSide: "BOOK" };
+      const updated = await api.manualPair(data.session.id, body);
+      toast.success("Pasangan manual dibuat.");
+      setSelection({ bankId: null, bookId: null });
+      onRefresh(updated);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function MiniCard({ tx, side }: { tx: TransactionDTO; side: "BANK" | "BOOK" }) {
+    const selected = side === "BANK" ? selection.bankId === tx.id : selection.bookId === tx.id;
+    const isHighlight = side === "BOOK" && highlightBookId === tx.id && !!selBank;
+    return (
+      <button
+        onClick={() => setSelection((prev) => (side === "BANK" ? { ...prev, bankId: prev.bankId === tx.id ? null : tx.id } : { ...prev, bookId: prev.bookId === tx.id ? null : tx.id }))}
+        disabled={finalized}
+        className={`w-full rounded-lg border p-3 text-left transition focus-visible:ring-2 focus-visible:ring-teal-500 ${selected ? "border-teal-400 ring-2 ring-teal-500 bg-teal-50/40" : isHighlight ? "border-amber-300 bg-amber-50/40" : "border-slate-200 bg-white hover:border-slate-300"}`}
+      >
+        <div className="flex items-center gap-1.5">
+          <SourceBadge source={side} />
+          <DirectionPill direction={tx.direction} />
+          {isHighlight && !selected && (
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Paling cocok</span>
+          )}
+        </div>
+        <div className="mt-1 truncate text-sm font-medium text-slate-900">{tx.description}</div>
+        <div className="text-xs text-slate-500">{tx.reference || "—"} · {formatDateID(tx.date)}</div>
+        <div className="mt-0.5 font-mono text-sm tabular-nums text-slate-900">{formatIDR(tx.amount)}</div>
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-600">Sisi Bank ({bankItems.length})</div>
+          {bankItems.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">Tidak ada item Bank belum cocok.</div>
+          ) : (
+            bankItems.map((tx) => <MiniCard key={tx.id} tx={tx} side="BANK" />)
+          )}
+        </div>
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-violet-600">Sisi Buku ({bookItems.length})</div>
+          {bookItems.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">Tidak ada item Buku belum cocok.</div>
+          ) : (
+            bookItems.map((tx) => <MiniCard key={tx.id} tx={tx} side="BOOK" />)
+          )}
+        </div>
+      </div>
+
+      {/* Bar aksi bawah: perbandingan live */}
+      {selBank && selBook && (
+        <div className="sticky bottom-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
+            <span>Bank terpilih: <b className="font-mono tabular-nums text-slate-900">{formatIDR(selBank.amount)}</b></span>
+            <span>Buku terpilih: <b className="font-mono tabular-nums text-slate-900">{formatIDR(selBook.amount)}</b></span>
+            <span>Selisih: <b className={`font-mono tabular-nums ${diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b></span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={pair}
+              disabled={loading}
+              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
+            >
+              {loading ? "Memproses…" : "Pasangkan"}
+            </button>
+            <button onClick={() => setSelection({ bankId: null, bookId: null })} className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50">Batal</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -346,6 +461,8 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   const s = data.summary;
   const [triage, setTriage] = useState<"ALL" | "BANK_ADJ" | "NEED_PAIR" | "BANK" | "BOOK">("ALL");
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "split">("list");
+  const [splitSel, setSplitSel] = useState<{ bankId: string | null; bookId: string | null }>({ bankId: null, bookId: null });
   const [drawerSource, setDrawerSource] = useState<TransactionDTO | null>(null);
   const [reopening, setReopening] = useState(false);
 
@@ -504,9 +621,9 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     && s.isBalanced;
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+    <div className={`grid grid-cols-1 gap-6 ${viewMode === "split" ? "xl:grid-cols-12" : "lg:grid-cols-12"}`}>
       {/* Kolom kiri — Antrean Kerja */}
-      <div className="space-y-6 lg:col-span-8">
+      <div className={`space-y-6 ${viewMode === "split" ? "xl:col-span-8 lg:col-span-12" : "lg:col-span-8"}`}>
         {/* Banner info terkunci (FINALIZED) */}
         {finalized && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
@@ -592,7 +709,24 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
         {(pendingUnfinished > 0 || bankAdjItems.length > 0) && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Perlu Diproses</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-900">Perlu Diproses</h3>
+                {/* Toggle tampilan: Daftar | Berdampingan (desktop lg+) */}
+                <div className="hidden lg:inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                  <button
+                    onClick={() => setViewMode("list")}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-teal-500 ${viewMode === "list" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    <List className="h-3.5 w-3.5" /> Daftar
+                  </button>
+                  <button
+                    onClick={() => setViewMode("split")}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-teal-500 ${viewMode === "split" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    <Columns2 className="h-3.5 w-3.5" /> Berdampingan
+                  </button>
+                </div>
+              </div>
               {smartRoutineItems.length >= 2 && (
                 <button
                   onClick={applyAllSmart}
@@ -638,12 +772,26 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 </button>
               </div>
             )}
-            {filteredRoutine.bank.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
-            ))}
-            {filteredRoutine.book.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
-            ))}
+            {viewMode === "split" ? (
+              <SplitPairView
+                bankItems={unmatchedRoutine.bank}
+                bookItems={unmatchedRoutine.book}
+                data={data}
+                onRefresh={onRefresh}
+                selection={splitSel}
+                setSelection={setSplitSel}
+                finalized={finalized}
+              />
+            ) : (
+              <>
+                {filteredRoutine.bank.map((tx) => (
+                  <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
+                ))}
+                {filteredRoutine.book.map((tx) => (
+                  <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
+                ))}
+              </>
+            )}
           </div>
         )}
 
@@ -663,8 +811,10 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       </div>
 
       {/* Kolom kanan — Cermin Saldo */}
-      <div className="lg:col-span-4">
+      <div className={`${viewMode === "split" ? "xl:col-span-4 lg:col-span-12" : "lg:col-span-4"}`}>
+        <div className="sticky top-6">
         <BalanceMirror data={data} onGoReport={onGoReport} />
+        </div>
       </div>
 
       {/* Dialog konfirmasi batch auto-jurnal */}
