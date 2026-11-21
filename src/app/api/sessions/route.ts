@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { CreateSessionSchema } from "@/lib/schemas/reconciliation";
@@ -10,9 +11,12 @@ export async function GET(request: Request) {
     const q = url.searchParams.get("q") ?? "";
     const status = url.searchParams.get("status") ?? "";
 
-    const where: { OR?: Array<{ companyName: { contains: string } } | { bankAccountName: { contains: string } }>; status?: string } = {};
+    const where: Prisma.ReconciliationSessionWhereInput = {};
     if (q) {
-      where.OR = [{ companyName: { contains: q } }, { bankAccountName: { contains: q } }];
+      where.OR = [
+        { companyName: { contains: q, mode: "insensitive" } },
+        { bankAccountName: { contains: q, mode: "insensitive" } },
+      ];
     }
     if (status) where.status = status;
 

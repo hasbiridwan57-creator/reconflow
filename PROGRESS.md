@@ -90,6 +90,14 @@
 ### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
 1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
 
+## Migrasi PostgreSQL (Neon) + Deployment — TAHAP 1
+- [x] **Prisma → PostgreSQL**: datasource provider `sqlite`→`postgresql` (url tetap `env(DATABASE_URL)`).
+- [x] **package.json**: `postinstall: prisma generate`; `build: prisma generate && next build` (hapus `--turbopack` agar stabil di Vercel serverless).
+- [x] **Case-insensitive search**: `GET /api/sessions` pakai `Prisma.ReconciliationSessionWhereInput` + `mode: "insensitive"` (filter companyName/bankAccountName).
+- [x] **Test bebas-DB**: hapus override `DATABASE_URL` di `vitest.config.ts`; suite integrasi di-`describe.skipIf(!TEST_DATABASE_URL)`; hapus cleanup `fs.unlinkSync`. `npm run test` → 97 pass + 1 skipped (tanpa perlu DB).
+- [x] **Repo hygiene**: `.gitignore` (`.env*`, `.DS_Store`, `prisma/*.db*`); buat `.env.example`. Tidak ada secret di git.
+- [x] Gate lokal: prisma validate ✅ · generate ✅ · tsc 0 ✅ · lint 0 ✅ · test 97+1skip ✅ · build ✅
+
 ## Putaran R7 — Isolasi DB Test + Banner Reopen (Gemini audit `bdfd27d`)
 - [x] **Fix isolasi DB test (akar: hoisting ESM)** — `DATABASE_URL` test dipindah ke `vitest.config.ts` (`test.env`) sehingga ter-set SEBELUM modul mana pun dievaluasi; `@/lib/db` (via `@/lib/session`) kini memakai DB test, bukan dev.db. `TEST_DB_PATH` test dibaca dari env (deterministik, sinkron db push & cleanup). Bukti: `npm run test` TIDAK mengubah `prisma/dev.db` (md5 identik sebelum/sesudah).
 - [x] **Bersihkan prisma/dev.db** — hapus 133 sesi sampah (semua punya demoScenarioKey, 16 di antaranya status `RECONCILED` tak-valid bekas test lama) via DELETE FK-safe (anak dulu). Sidebar "Rekening Aktif" kembali bersih. Backup di /tmp.

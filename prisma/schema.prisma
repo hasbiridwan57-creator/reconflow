@@ -3,10 +3,7 @@ generator client {
 }
 
 datasource db {
-  // Default SQLite untuk zero-config local/VPS deployment.
-  // Untuk PostgreSQL (Vercel/Neon/Supabase), ubah provider menjadi "postgresql"
-  // dan set DATABASE_URL di .env.
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
