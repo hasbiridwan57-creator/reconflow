@@ -6,10 +6,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { api, type HydratedSessionResponse } from "@/lib/api/client";
 import { formatIDR } from "@/lib/format";
-import { FileText, FileSpreadsheet, Lock, Clock } from "lucide-react";
+import { FileText, FileSpreadsheet, Lock, Clock, Eye } from "lucide-react";
+
+// Modal pratinjau di-import dinamis (ssr:false) agar `exceljs` tak ikut bundle awal
+// halaman workspace — chunk-nya baru dimuat saat user menekan "Pratinjau".
+const ExportPreview = dynamic(() => import("./ExportPreview"), {
+  ssr: false,
+  loading: () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 text-sm text-white">
+      Menyiapkan pratinjau…
+    </div>
+  ),
+});
 
 /* ---------- AdjustingJournalTable ---------- */
 export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void }) {
@@ -117,6 +129,7 @@ export function AuditLogTimeline({ data }: { data: HydratedSessionResponse }) {
 /* ---------- ExportActionBar ---------- */
 export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void }) {
   const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<null | "pdf" | "excel">(null);
   const [preparedBy, setPreparedBy] = useState(data.session.preparedBy);
   const [reviewedBy, setReviewedBy] = useState(data.session.reviewedBy);
   const isBalanced = data.summary.isBalanced;
@@ -168,6 +181,12 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
         <a href={`/api/sessions/${data.session.id}/export/excel`} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
           <FileSpreadsheet className="h-4 w-4" /> Ekspor Excel (.xlsx)
         </a>
+        <button
+          onClick={() => setPreview("pdf")}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          <Eye className="h-4 w-4" /> Pratinjau
+        </button>
       </div>
       {!isBalanced && !finalized && (
         <p className="mt-3 text-xs text-amber-600">Sesi hanya bisa difinalisasi setelah selisih = Rp 0 dan seluruh item diklasifikasi.</p>
@@ -191,6 +210,10 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
             </div>
           </div>
         </div>
+      )}
+
+      {preview && (
+        <ExportPreview sessionId={data.session.id} defaultTab={preview} onClose={() => setPreview(null)} />
       )}
     </div>
   );

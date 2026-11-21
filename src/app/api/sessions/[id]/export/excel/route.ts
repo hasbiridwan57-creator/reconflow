@@ -1,6 +1,7 @@
 import { getHydratedSession, notFoundResponse, requireSessionAccess } from "@/lib/session";
 import { getWorkspaceKey } from "@/lib/workspace";
 import { generateExcel, excelFileName } from "@/lib/export/excelGenerator";
+import { contentDisposition, wantsInline } from "@/lib/export/http";
 
 /** GET /api/sessions/[id]/export/excel — unduh Workbook 4-sheet (spec §7 endpoint 16). */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,7 +18,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": contentDisposition(filename, wantsInline(request)),
+      "Cache-Control": "no-store",
     },
   });
 }

@@ -65,3 +65,64 @@ export async function parseXlsx(buffer: ArrayBuffer | Buffer): Promise<ParsedShe
   }
   return { headers, rows };
 }
+
+/* =====================================================================
+ * Pratinjau multi-sheet (.xlsx) — utk modal Preview sebelum unduh.
+ * ===================================================================== */
+
+export interface PreviewCell {
+  text: string;
+  isNumeric: boolean;
+}
+
+export interface PreviewSheet {
+  name: string;
+  colCount: number;
+  rows: PreviewCell[][];
+}
+
+/** True bila cell berisi angka (atau formula dengan hasil numerik). */
+function isNumericCell(cell: ExcelJS.Cell): boolean {
+  const v = cell.value;
+  if (typeof v === "number") return true;
+  if (typeof v === "object" && v !== null && "formula" in v && "result" in v) {
+    return typeof (v as { result?: unknown }).result === "number";
+  }
+  return false;
+}
+
+/**
+ * Baca SELURUH worksheet dari buffer .xlsx → grid preview.
+ * Baris yang seluruh selnya kosong dibuang; lebar tiap baris diseragamkan ke colCount.
+ */
+export async function parseWorkbookPreview(buffer: ArrayBuffer | Buffer): Promise<PreviewSheet[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer as ArrayBuffer);
+  const sheets: PreviewSheet[] = [];
+
+  for (const ws of wb.worksheets) {
+    const raw: PreviewCell[][] = [];
+    let colCount = 0;
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      const lastCol = Math.max(row.cellCount, 1);
+      const cells: PreviewCell[] = [];
+      for (let col = 1; col <= lastCol; col += 1) {
+        const cell = row.getCell(col);
+        cells.push({ text: cellToString(cell), isNumeric: isNumericCell(cell) });
+      }
+      // Lewati baris yang seluruh selnya kosong (mis. baris pemisah).
+      if (!cells.some((c) => c.text !== "")) return;
+      colCount = Math.max(colCount, cells.length);
+      raw.push(cells);
+    });
+    // Seragamkan lebar baris → colCount (pad dengan sel kosong).
+    const rows: PreviewCell[][] = raw.map((cells) => {
+      if (cells.length === colCount) return cells;
+      const padded = cells.slice();
+      while (padded.length < colCount) padded.push({ text: "", isNumeric: false });
+      return padded;
+    });
+    sheets.push({ name: ws.name, colCount, rows });
+  }
+  return sheets;
+}

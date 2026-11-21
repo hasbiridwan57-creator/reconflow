@@ -213,3 +213,17 @@
 ### Bagian C — Test & Gate
 - [x] Test baru (+4): `engine.spreadsheet.test.ts` hyperlink & error-cell; `export.status.test.ts` DISCREPANCY_MATCH → "Selisih" & PDF nominal besar (389.296.000 vs 405.160.000) tanpa "…".
 - [x] Gate hijau: `prisma validate` ✓ · `prisma generate` ✓ · tsc 0 · lint 0 · **125 pass + 1 skip (126)** · build 0.
+
+## Putaran: PRATINJAU SEBELUM UNDUH (Preview PDF & Excel)
+### Backend
+- [x] `src/lib/export/http.ts` (baru): `contentDisposition(filename, inline)` + `wantsInline(request)` — pure & teruji.
+- [x] Route `export/pdf` & `export/excel`: dukung `?inline=1` → `Content-Disposition: inline` (pratinjau di iframe, bukan unduh) + `Cache-Control: no-store`. Default tetap `attachment`.
+### Engine
+- [x] `spreadsheet.ts`: `parseWorkbookPreview(buffer)` → `PreviewSheet[]` (nama sheet, `colCount`, `rows: PreviewCell[][]` dgn `{text, isNumeric}`); baris kosong dibuang, lebar baris diseragamkan ke `colCount`.
+### Frontend
+- [x] `src/components/report/ExportPreview.tsx` (baru): modal tab PDF (`<iframe src=...?inline=1>`, pakai penampil PDF bawaan browser) & Excel (fetch `.xlsx` → `parseWorkbookPreview` → strip tab sheet + grid, sel numerik rata-kanan `font-mono tabular-nums`, header teal). Escape menutup.
+- [x] `ReportComponents.tsx`: tombol "Pratinjau" di `ExportActionBar`; modal di-import via `next/dynamic({ ssr: false })` sehingga `exceljs` TIDAK ikut bundle awal halaman workspace.
+### Test & Gate
+- [x] `tests/export.preview.test.ts` (baru, 6 test): parseWorkbookPreview multi-sheet/nama/numerik/padding/empty; contentDisposition inline vs attachment; wantsInline.
+- [x] Gate hijau: tsc 0 · lint 0 · **131 pass + 1 skip (132)** · build 0.
+- [x] Bundle: `/workspace/[id]` First Load JS 150→151 kB (285 kB total); `exceljs` di chunk lazy terpisah 910 kB (tidak ada di manifest awal workspace).
