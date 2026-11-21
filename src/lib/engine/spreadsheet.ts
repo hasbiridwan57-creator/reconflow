@@ -91,6 +91,47 @@ function isNumericCell(cell: ExcelJS.Cell): boolean {
   return false;
 }
 
+/** Nilai numerik cell (number, atau hasil formula numerik), else null. */
+function numericValue(cell: ExcelJS.Cell): number | null {
+  const v = cell.value;
+  if (typeof v === "number") return v;
+  if (typeof v === "object" && v !== null && "formula" in v && "result" in v) {
+    const r = (v as { result?: unknown }).result;
+    if (typeof r === "number") return r;
+  }
+  return null;
+}
+
+/** Format ribuan gaya Indonesia deterministik: 68181000 → "68.181.000" / -3500 → "-3.500". */
+function groupThousands(n: number, decimals: number): string {
+  const neg = n < 0;
+  const fixed = Math.abs(n).toFixed(decimals);
+  const [int, frac] = fixed.split(".");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${neg ? "-" : ""}${grouped}${decimals > 0 ? `,${frac}` : ""}`;
+}
+
+/**
+ * Teks tampilan cell utk pratinjau — setia ke numFmt berkas Excel
+ * (`#,##0` → 68.181.000; `0.0%` → 73,7%). Tanpa numFmt → teks mentah.
+ * CATATAN: hanya dipakai pratinjau; jalur impor (`parseXlsx`) tetap pakai `cellToString` mentah
+ * agar nominal tetap bisa di-parse.
+ */
+function formatCellDisplay(cell: ExcelJS.Cell): string {
+  const fmt = typeof cell.numFmt === "string" ? cell.numFmt.trim() : "";
+  const num = numericValue(cell);
+  if (!fmt || num === null) return cellToString(cell);
+  if (fmt.includes("%")) {
+    const dec = (fmt.match(/\.(0+)%/) || [])[1]?.length ?? 0;
+    return `${(num * 100).toFixed(dec).replace(".", ",")}%`;
+  }
+  if (fmt.includes("#,##0")) {
+    const dec = (fmt.match(/\.(0+)/) || [])[1]?.length ?? 0;
+    return groupThousands(num, dec);
+  }
+  return cellToString(cell);
+}
+
 /**
  * Baca SELURUH worksheet dari buffer .xlsx → grid preview.
  * Baris yang seluruh selnya kosong dibuang; lebar tiap baris diseragamkan ke colCount.
@@ -108,7 +149,7 @@ export async function parseWorkbookPreview(buffer: ArrayBuffer | Buffer): Promis
       const cells: PreviewCell[] = [];
       for (let col = 1; col <= lastCol; col += 1) {
         const cell = row.getCell(col);
-        cells.push({ text: cellToString(cell), isNumeric: isNumericCell(cell) });
+        cells.push({ text: formatCellDisplay(cell), isNumeric: isNumericCell(cell) });
       }
       // Lewati baris yang seluruh selnya kosong (mis. baris pemisah).
       if (!cells.some((c) => c.text !== "")) return;

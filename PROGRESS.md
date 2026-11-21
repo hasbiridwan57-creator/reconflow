@@ -227,3 +227,4 @@
 - [x] `tests/export.preview.test.ts` (baru, 6 test): parseWorkbookPreview multi-sheet/nama/numerik/padding/empty; contentDisposition inline vs attachment; wantsInline.
 - [x] Gate hijau: tsc 0 · lint 0 · **131 pass + 1 skip (132)** · build 0.
 - [x] Bundle: `/workspace/[id]` First Load JS 150→151 kB (285 kB total); `exceljs` di chunk lazy terpisah 910 kB (tidak ada di manifest awal workspace).
+- [x] Fidelity pratinjau Excel: `formatCellDisplay()` menghormati `numFmt` berkas (`#,##0` → `68.181.000`, `0.0%` → `73,7%`); jalur impor `parseXlsx` tetap pakai `cellToString` mentah. +2 test.

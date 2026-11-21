@@ -55,6 +55,39 @@ describe("parseWorkbookPreview", () => {
     const sheets = await parseWorkbookPreview(buf);
     expect(sheets).toEqual([]);
   });
+
+  it("menghormati numFmt berkas: #,##0 → ribuan titik, 0.0% → persen koma", async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Ringkasan");
+    ws.columns = [
+      { header: "Komponen", key: "label", width: 40 },
+      { header: "Jumlah (Rp)", key: "value", width: 22 },
+    ];
+    ws.addRow({ label: "Saldo akhir bank", value: 68_181_000 });
+    ws.addRow({ label: "Biaya", value: -3_500 });
+    ws.getColumn("value").numFmt = "#,##0";
+    const rate = ws.addRow({ label: "Match Rate (%)", value: 0.7368421052631579 });
+    rate.getCell("value").numFmt = "0.0%";
+    const buf = (await ws.workbook.xlsx.writeBuffer()) as ArrayBuffer;
+
+    const [sheet] = await parseWorkbookPreview(buf);
+    const rowOf = (label: string) => sheet.rows.find((r) => r[0].text === label)!;
+    expect(rowOf("Saldo akhir bank")[1].text).toBe("68.181.000");
+    expect(rowOf("Biaya")[1].text).toBe("-3.500");
+    expect(rowOf("Match Rate (%)")[1].text).toBe("73,7%");
+    // Nilai numerik tetap ditandai numerik walau teksnya sudah diformat.
+    expect(rowOf("Saldo akhir bank")[1].isNumeric).toBe(true);
+  });
+
+  it("tanpa numFmt → teks mentah (jalur impor parseXlsx tetap memakai cellToString)", async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("S");
+    ws.addRow(["Nominal"]);
+    ws.addRow([68_181_000]);
+    const buf = (await ws.workbook.xlsx.writeBuffer()) as ArrayBuffer;
+    const [sheet] = await parseWorkbookPreview(buf);
+    expect(sheet.rows[1][0].text).toBe("68181000");
+  });
 });
 
 describe("http content-disposition", () => {
