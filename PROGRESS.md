@@ -90,6 +90,12 @@
 ### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
 1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
 
+## Putaran R7 — Isolasi DB Test + Banner Reopen (Gemini audit `bdfd27d`)
+- [x] **Fix isolasi DB test (akar: hoisting ESM)** — `DATABASE_URL` test dipindah ke `vitest.config.ts` (`test.env`) sehingga ter-set SEBELUM modul mana pun dievaluasi; `@/lib/db` (via `@/lib/session`) kini memakai DB test, bukan dev.db. `TEST_DB_PATH` test dibaca dari env (deterministik, sinkron db push & cleanup). Bukti: `npm run test` TIDAK mengubah `prisma/dev.db` (md5 identik sebelum/sesudah).
+- [x] **Bersihkan prisma/dev.db** — hapus 133 sesi sampah (semua punya demoScenarioKey, 16 di antaranya status `RECONCILED` tak-valid bekas test lama) via DELETE FK-safe (anak dulu). Sidebar "Rekening Aktif" kembali bersih. Backup di /tmp.
+- [x] **Banner info terkunci + tombol REOPEN** (`ReconciliationDesk`) — saat FINALIZED tampil banner amber ramping di paling atas kolom kiri: "Sesi ini telah difinalisasi dan dikunci (read-only)" + tombol 1-klik "Buka Kembali Sesi" (`api.finalize(id,{action:"REOPEN"})`). Terverifikasi browser: klik → status kembali DRAFT, banner hilang.
+- [x] Gate: tsc 0 → lint 0 → **test 107/107** → build 17 route; dev.db tetap bersih setelah test.
+
 ## Putaran R6 — Bug Fungsional & Polish (Gemini audit `1b8b62e`)
 - [x] **LedgerExplorer** — fix search: nominal hanya dicocokkan jika ada digit (`digits.length > 0`); ConfirmedTable kini cari tanggal + nominal + referensi
 - [x] **LedgerExplorer** — fix `adjMap` key dari `a.transactionId` → `a.id` sehingga pill "Penyesuaian: [Kategori]" tampil benar

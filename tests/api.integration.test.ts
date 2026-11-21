@@ -8,13 +8,12 @@
  * agar tidak menyentuh dev.db.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import path from "node:path";
 import fs from "node:fs";
-import { randomUUID } from "node:crypto";
 
-// Pindahkan DATABASE_URL ke file DB test SEBELUM import modul apapun yang memuat Prisma.
-const TEST_DB_PATH = path.resolve(process.cwd(), "prisma", `test-${randomUUID()}.db`);
-process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
+// DATABASE_URL sudah di-set di vitest.config.ts (test.env) SEBELUM modul ini
+// dievaluasi — menutup celah hoisting ESM. Ambil path DB test dari env agar
+// deterministik dan sinkron dengan beforeAll (db push) & afterAll (cleanup).
+const TEST_DB_PATH = process.env.DATABASE_URL!.replace(/^file:/, "");
 
 import { db as prisma } from "@/lib/db";
 import { DEMO_SCENARIOS, DEFAULT_MATCHING_CONFIG } from "@/lib/demo/scenarios";

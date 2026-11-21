@@ -13,7 +13,7 @@ import { suggestAdjustmentCategory, type CategorySuggestion } from "@/lib/engine
 import { getAdjustmentImpactLabel } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2 } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2, Lock, Unlock } from "lucide-react";
 import { ConfirmedMatchesTab } from "@/components/workbench/WorkbenchComponents";
 
 /* Kategori per pane untuk dropdown manual. */
@@ -336,6 +336,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   const [selectedBank, setSelectedBank] = useState<string | null>(null);
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
   const [manualFaultSide, setManualFaultSide] = useState<"BOOK" | "BANK">("BOOK");
+  const [reopening, setReopening] = useState(false);
 
   // Suggested yang belum dikonfirmasi.
   const suggestedPending = data.matches.filter((m) => !m.isConfirmed && m.status === "SUGGESTED_MATCH");
@@ -439,6 +440,19 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     }
   }
 
+  async function doReopen() {
+    setReopening(true);
+    try {
+      await api.finalize(data.session.id, { action: "REOPEN" });
+      toast.success("Sesi dibuka kembali (DRAFT).");
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal membuka sesi.");
+    } finally {
+      setReopening(false);
+    }
+  }
+
   // Manual pair bar.
   const selBank = data.unmatchedBank.find((t) => t.id === selectedBank);
   const selBook = data.unmatchedBook.find((t) => t.id === selectedBook);
@@ -470,6 +484,25 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
       {/* Kolom kiri — Antrean Kerja */}
       <div className="space-y-6 lg:col-span-8">
+        {/* Banner info terkunci (FINALIZED) */}
+        {finalized && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <Lock className="h-4 w-4 shrink-0 text-amber-600" />
+              <span>
+                <span className="font-semibold">Sesi ini telah difinalisasi dan dikunci (read-only).</span>{" "}
+                Untuk mengubah data, buka kembali sesi terlebih dahulu.
+              </span>
+            </div>
+            <button
+              onClick={doReopen}
+              disabled={reopening}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+            >
+              <Unlock className="h-3.5 w-3.5" /> {reopening ? "Membuka..." : "Buka Kembali Sesi"}
+            </button>
+          </div>
+        )}
         {/* Progress bar */}
         <div className="rounded-lg border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
           <div className="flex items-center justify-between text-sm">
