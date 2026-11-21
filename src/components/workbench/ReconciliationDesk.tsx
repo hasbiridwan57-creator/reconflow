@@ -80,7 +80,7 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
   }
 
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-4">
+    <div className="rounded-lg border border-amber-300 bg-amber-50/60 p-4">
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
         <div className="min-w-0 flex-1">
@@ -179,7 +179,7 @@ function RoutineCard({
   }
 
   return (
-    <div className={`rounded-xl border bg-white p-4 ${selected ? "border-teal-300 ring-2 ring-teal-500 bg-teal-50/40" : "border-slate-200"}`}>
+    <div className={`rounded-lg border bg-white p-4 ${selected ? "border-teal-300 ring-2 ring-teal-500 bg-teal-50/40" : "border-slate-200"}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -228,11 +228,14 @@ function BalanceMirror({ data, onGoReport }: { data: HydratedSessionResponse; on
   const bankAdj = data.adjustments.filter((a) => a.side === "BANK").reduce((sum, a) => sum + a.signedAmount, 0);
   const bookAdj = data.adjustments.filter((a) => a.side === "BOOK").reduce((sum, a) => sum + a.signedAmount, 0);
   const journalCount = data.journals.entries.length;
-  const remaining = s.unclassifiedCount + s.pendingSuggestedCount;
+  const actionableRemaining =
+    data.matches.filter((m) => !m.isConfirmed).length +
+    data.unmatchedBank.filter((t) => !t.adjustmentId).length +
+    data.unmatchedBook.filter((t) => !t.adjustmentId).length;
   const journalBalanced = data.journals.isDoubleEntryBalanced;
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 lg:sticky lg:top-20">
+    <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 lg:sticky lg:top-20">
       <div className="text-center">
         <span className={`inline-block rounded-full px-4 py-1.5 text-sm font-bold ${s.isBalanced ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
           {s.isBalanced ? "✓ BALANCED (Rp 0)" : "BELUM SEIMBANG"}
@@ -294,7 +297,7 @@ function BalanceMirror({ data, onGoReport }: { data: HydratedSessionResponse; on
         </button>
       ) : (
         <div className="rounded-lg bg-slate-50 p-3 text-center text-xs text-slate-600">
-          {remaining > 0 ? `${remaining} item tersisa untuk diselesaikan.` : "Semua item terselesaikan — cek apakah selisih masih ada."}
+          {actionableRemaining > 0 ? `${actionableRemaining} item tersisa untuk diselesaikan.` : "Semua item terselesaikan — cek apakah selisih masih ada."}
         </div>
       )}
     </div>
@@ -310,7 +313,7 @@ function formatIDRAccountingShort(n: number): string {
 function Accordion({ title, count, children, defaultOpen = false }: { title: string; count: number; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className="rounded-lg border border-slate-200 bg-white">
       <button
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between p-4 text-left"
@@ -483,7 +486,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
         </div>
 
         {inboxZero && (
-          <div className="rounded-xl border border-emerald-300 bg-emerald-50/60 p-6 text-center">
+          <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 p-6 text-center">
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500" />
             <div className="mt-2 text-lg font-semibold text-emerald-700">Inbox Zero Tercapai!</div>
             <div className="mt-1 text-sm text-emerald-600">Semua transaksi beres & saldo seimbang.</div>
@@ -667,7 +670,7 @@ function AnomalyTxCard({
     : (tx.direction === "IN" ? BOOK_IN_CATS : BOOK_OUT_CATS);
 
   return (
-    <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4">
+    <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">

@@ -65,7 +65,7 @@ export function DemoScenarioCards() {
             key={s.key}
             onClick={() => launch(s.key)}
             disabled={loading !== null}
-            className="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 text-left shadow-xs transition hover:border-teal-300 hover:shadow-sm disabled:opacity-60"
+            className="group flex flex-col rounded-lg border border-slate-200 bg-white p-5 text-left shadow-xs transition hover:border-teal-300 hover:shadow-sm disabled:opacity-60"
           >
             <div className="flex items-center justify-between">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 group-hover:bg-teal-50 group-hover:text-teal-600">

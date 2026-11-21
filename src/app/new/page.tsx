@@ -60,7 +60,7 @@ function Dropzone({ label, parsed, onFile, template, templateName }: {
     ? REQUIRED_ROLES.filter((r) => !parsed.mapping[r])
     : [];
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-900">{label}</h3>
         <button onClick={() => downloadTemplate(template, templateName)} className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
@@ -195,7 +195,7 @@ export default function NewSessionPage() {
       </div>
 
       {/* Langkah 2 — Metadata */}
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+      <div className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
         <h3 className="mb-4 text-sm font-semibold text-slate-900">2. Metadata Sesi</h3>
         <div className="grid gap-4 md:grid-cols-3">
           {([
@@ -229,7 +229,7 @@ export default function NewSessionPage() {
 
       {/* Column Mapper — collapsible accordion */}
       {(bank || book) && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white">
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white">
           <button
             onClick={() => setMapperOpen(!mapperIsOpen)}
             className="flex w-full items-center justify-between p-4 text-left"
@@ -251,7 +251,7 @@ export default function NewSessionPage() {
                 {[bank && { label: "Bank", parsed: bank }, book && { label: "Buku", parsed: book }].filter(Boolean).map((item) => {
                   const p = item!.parsed;
                   return (
-                    <div key={item!.label} className="rounded-xl border border-slate-200 p-4">
+                    <div key={item!.label} className="rounded-lg border border-slate-200 p-4">
                       <h4 className="mb-3 text-sm font-semibold text-slate-900">Column Mapper — {item!.label}</h4>
                       <div className="grid grid-cols-2 gap-3">
                         {(Object.keys(COLUMN_ALIASES) as ColumnRole[]).map((role) => (

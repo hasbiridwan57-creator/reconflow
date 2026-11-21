@@ -15,7 +15,7 @@ import { formatIDR, formatIDRAccounting, formatDateID } from "@/lib/format";
 import { getCategoryLabel } from "@/lib/engine/calculator";
 import type { MatchPairDTO } from "@/lib/session";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid, Cell,
 } from "recharts";
 
 /* ---------- MatchingControlsBar ---------- */
@@ -102,16 +102,16 @@ export function ConfirmedMatchesTab({ data, onRefresh }: { data: HydratedSession
     onGlobalFilterChange: setSearch,
   });
 
-  if (confirmed.length === 0) return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Belum ada pasangan terkonfirmasi.</div>;
+  if (confirmed.length === 0) return <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500">Belum ada pasangan terkonfirmasi.</div>;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className="rounded-lg border border-slate-200 bg-white">
       <div className="border-b border-slate-200 p-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Cari cepat..."
-          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-teal-500"
         />
       </div>
       <div className="overflow-x-auto">
@@ -139,6 +139,8 @@ export function ReconMatrixCard({ data }: { data: HydratedSessionResponse }) {
     subtitle: string,
     start: number,
     adj: typeof bankAdj,
+    totalLabel: string,
+    totalValue: number,
   ) {
     const additions = adj.filter((a) => a.signedAmount > 0);
     const deductions = adj.filter((a) => a.signedAmount < 0);
@@ -172,6 +174,10 @@ export function ReconMatrixCard({ data }: { data: HydratedSessionResponse }) {
             <span className="font-mono tabular-nums text-right text-rose-600">{formatIDRAccounting(a.signedAmount)}</span>
           </div>
         ))}
+        <div className="double-underline mt-3 flex justify-between border-t border-slate-300 pt-2 font-semibold">
+          <span>{totalLabel}</span>
+          <span className="font-mono tabular-nums text-right">{formatIDR(totalValue)}</span>
+        </div>
       </div>
     );
   }
@@ -183,13 +189,9 @@ export function ReconMatrixCard({ data }: { data: HydratedSessionResponse }) {
         <h3 className="text-sm font-semibold text-slate-900">Matriks Rekonsiliasi — Laporan Formal</h3>
       </div>
       <div className="space-y-5 p-5">
-        {renderSection("A. Sisi Bank (Rekening Koran)", "Saldo bank disesuaikan", data.session.endingBankBalance, bankAdj)}
+        {renderSection("A. Sisi Bank (Rekening Koran)", "Saldo bank disesuaikan", data.session.endingBankBalance, bankAdj, "Saldo Bank Disesuaikan", s.adjustedBankBalance)}
         <div className="border-t border-slate-200/70 pt-4">
-          {renderSection("B. Sisi Buku (Buku Kas / GL)", "Saldo buku disesuaikan", data.session.endingBookBalance, bookAdj)}
-          <div className="double-underline mt-3 flex justify-between border-t border-slate-300 pt-2 font-semibold">
-            <span>Saldo Kas yang Benar (Disesuaikan)</span>
-            <span className="font-mono tabular-nums text-right">{formatIDR(s.adjustedBookBalance)}</span>
-          </div>
+          {renderSection("B. Sisi Buku (Buku Kas / GL)", "Saldo buku disesuaikan", data.session.endingBookBalance, bookAdj, "Saldo Buku Disesuaikan", s.adjustedBookBalance)}
         </div>
       </div>
       {/* Baris penutup CHECK */}
@@ -250,7 +252,7 @@ export function ReconWaterfallChart({ data }: { data: HydratedSessionResponse })
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="rounded-lg border border-slate-200 bg-white p-5">
       <h4 className="mb-1 text-sm font-semibold text-slate-900">Jembatan Penyesuaian Saldo Bank</h4>
       <p className="mb-4 text-xs text-slate-500">
         Saldo Akhir Buku: <span className="font-mono tabular-nums">{formatIDR(data.session.endingBookBalance)}</span> · Selisih: <span className={`font-mono tabular-nums ${s.variance === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(s.variance)}</span>
@@ -259,6 +261,7 @@ export function ReconWaterfallChart({ data }: { data: HydratedSessionResponse })
         <BarChart data={chartData} margin={{ top: 10, right: 20, bottom: 40, left: 20 }}>
           <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" interval={0} axisLine={{ stroke: "#E2E8F0" }} tickLine={false} />
           <YAxis domain={[0, yMax]} tickFormatter={(v: number) => formatIDR(v)} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+          <CartesianGrid stroke="#F1F5F9" vertical={false} />
           <Tooltip
             formatter={(value, name, item) => tooltipFormatter(value as number, name as string, item as { payload?: WaterfallDatum })}
             contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}

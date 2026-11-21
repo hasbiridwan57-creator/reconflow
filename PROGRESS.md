@@ -90,6 +90,17 @@
 ### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
 1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
 
+## Putaran R6 — Bug Fungsional & Polish (Gemini audit `1b8b62e`)
+- [x] **LedgerExplorer** — fix search: nominal hanya dicocokkan jika ada digit (`digits.length > 0`); ConfirmedTable kini cari tanggal + nominal + referensi
+- [x] **LedgerExplorer** — fix `adjMap` key dari `a.transactionId` → `a.id` sehingga pill "Penyesuaian: [Kategori]" tampil benar
+- [x] **LedgerExplorer** — tambah kolom **Sumber** (BANK sky / BUKU violet) di tabel non-confirmed
+- [x] **Hitungan tersisa konsisten** — `actionableRemaining` = match tak-confirmed + unmatched tanpa adjustment; dipakai KPI "Perlu Tindakan", badge Tab 1, & pesan BalanceMirror (tak ada lagi double-counting)
+- [x] **KPI Jurnal** — sub-label kondisional `isDoubleEntryBalanced ? "Debit = Kredit" : "Tidak Seimbang"`
+- [x] **Tombol Ekspor PDF** header — jadi link unduh langsung di SEMUA status (DRAFT/BALANCED/FINALIZED)
+- [x] **ReconMatrixCard** — subtotal double-underline di akhir Bagian A (Saldo Bank Disesuaikan) & Bagian B (Saldo Buku Disesuaikan)
+- [x] **Polish** — `focus:border-indigo-500`→teal-500; Waterfall `CartesianGrid` halus; sisa `rounded-xl`→`rounded-lg` di 6 file
+- [x] Gate: tsc 0 → lint 0 → **test 107/107** → build 17 route hijau
+
 ## Bright Modern Treasury — Visual Upgrade (Gemini audit #5)
 - [x] **Design system**: globals.css → "Bright Modern Treasury" (alabaster canvas #F8FAFC, primary teal-600, status semantik emerald/amber/rose).
 - [x] **AppShell**: sidebar putih permanen (w-64, border-r) + mobile slide-over drawer; Brand header (Wallet teal + ReconFlow + Treasury Workspace); Primary CTA "+ Rekonsiliasi Baru"; menu Beranda/Arsip; seksi **REKENING AKTIF** multi-account switcher (titik status, nama perusahaan, sub-rekening+periode, badge match%, highlight aktif teal); footer badge "Double-Entry · Audit-Ready".

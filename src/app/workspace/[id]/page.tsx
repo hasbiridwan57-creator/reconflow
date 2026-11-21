@@ -40,8 +40,11 @@ export default function WorkspacePage() {
   const session = data.session;
   const s = data.summary;
   const confirmedCount = data.matches.filter((m) => m.isConfirmed).length;
-  const pendingAction = s.pendingSuggestedCount + s.unclassifiedCount;
-  const itemsRemaining = pendingAction + data.unmatchedBank.filter((t) => !t.adjustmentId).length + data.unmatchedBook.filter((t) => !t.adjustmentId).length;
+  const actionableRemaining =
+    data.matches.filter((m) => !m.isConfirmed).length +
+    data.unmatchedBank.filter((t) => !t.adjustmentId).length +
+    data.unmatchedBook.filter((t) => !t.adjustmentId).length;
+  const journalBalanced = data.journals.isDoubleEntryBalanced;
 
   const statusBadge = {
     DRAFT: "bg-amber-50 text-amber-700 border-amber-200",
@@ -53,8 +56,8 @@ export default function WorkspacePage() {
     { label: "Mutasi Bank", value: `${data.bankTransactions.length}`, sub: "rekening koran", cls: "text-slate-900" },
     { label: "Mutasi Buku", value: `${data.bookTransactions.length}`, sub: "buku kas / GL", cls: "text-slate-900" },
     { label: "Match Rate", value: formatPercent(s.matchRate), sub: `${confirmedCount} pasang cocok`, cls: "text-slate-900" },
-    { label: "Perlu Tindakan", value: `${pendingAction}`, sub: "item tersisa", cls: pendingAction > 0 ? "text-amber-600" : "text-emerald-600" },
-    { label: "Jurnal Penyesuaian", value: `${data.journals.entries.length} entri`, sub: "Debit = Kredit", cls: "text-emerald-600" },
+    { label: "Perlu Tindakan", value: `${actionableRemaining}`, sub: "item tersisa", cls: actionableRemaining > 0 ? "text-amber-600" : "text-emerald-600" },
+    { label: "Jurnal Penyesuaian", value: `${data.journals.entries.length} entri`, sub: journalBalanced ? "Debit = Kredit" : "Tidak Seimbang", cls: journalBalanced ? "text-emerald-600" : "text-rose-600" },
     { label: "Check (Selisih)", value: formatIDR(s.variance), sub: s.isBalanced ? "Balanced" : "Belum seimbang", cls: s.variance === 0 ? "text-emerald-600" : "text-rose-600" },
   ];
 
@@ -79,18 +82,12 @@ export default function WorkspacePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              if (session.status === "FINALIZED") {
-                window.location.href = `/api/sessions/${session.id}/export/pdf`;
-              } else {
-                setTab(1); // buka tab laporan untuk isi modal tanda tangan.
-              }
-            }}
+          <a
+            href={`/api/sessions/${session.id}/export/pdf`}
             className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700"
           >
             <FileText className="h-3.5 w-3.5" /> Ekspor PDF
-          </button>
+          </a>
           <a
             href={`/api/sessions/${session.id}/export/excel`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -130,9 +127,9 @@ export default function WorkspacePage() {
             }`}
           >
             <ListChecks className="h-4 w-4" /> 1. Meja Rekonsiliasi
-            {itemsRemaining > 0 ? (
+            {actionableRemaining > 0 ? (
               <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-700">
-                {itemsRemaining}
+                {actionableRemaining}
               </span>
             ) : (
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />

@@ -26,11 +26,11 @@ export function RecentSessions() {
 
   if (error) return <div className="text-sm text-rose-600">{error}</div>;
   if (sessions.length === 0) {
-    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Belum ada sesi.</div>;
+    return <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500">Belum ada sesi.</div>;
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <table className="w-full text-sm">
         <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
           <tr>

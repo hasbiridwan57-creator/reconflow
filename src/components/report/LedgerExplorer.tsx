@@ -58,9 +58,7 @@ export function LedgerExplorer({ data }: { data: HydratedSessionResponse }) {
   const adjMap = useMemo(() => {
     const map = new Map<string, AdjustmentCategory>();
     for (const a of data.adjustments) {
-      if (a.transactionId) {
-        map.set(a.transactionId, a.category as AdjustmentCategory);
-      }
+      map.set(a.id, a.category as AdjustmentCategory);
     }
     return map;
   }, [data.adjustments]);
@@ -88,11 +86,12 @@ export function LedgerExplorer({ data }: { data: HydratedSessionResponse }) {
   const filtered = useMemo(() => {
     if (!query.trim()) return rows;
     const q = query.toLowerCase();
+    const digits = q.replace(/[^0-9]/g, "");
     return rows.filter((tx) =>
       tx.date.includes(q)
       || (tx.reference ?? "").toLowerCase().includes(q)
       || tx.description.toLowerCase().includes(q)
-      || String(tx.amount).includes(q.replace(/[^0-9]/g, "")),
+      || (digits.length > 0 && String(tx.amount).includes(digits)),
     );
   }, [rows, query]);
 
@@ -146,6 +145,7 @@ export function LedgerExplorer({ data }: { data: HydratedSessionResponse }) {
           <table className="w-full text-xs">
             <thead className="border-y border-slate-200 bg-slate-50/90 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               <tr>
+                <th className="px-3 py-2 text-left">Sumber</th>
                 <th className="px-3 py-2 text-left">Tanggal</th>
                 <th className="px-3 py-2 text-left">Referensi</th>
                 <th className="px-3 py-2 text-left">Keterangan</th>
@@ -157,6 +157,11 @@ export function LedgerExplorer({ data }: { data: HydratedSessionResponse }) {
             <tbody className="divide-y divide-slate-100">
               {filtered.map((tx) => (
                 <tr key={tx.id} className="hover:bg-slate-50/40">
+                  <td className="px-3 py-1.5">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${tx.source === "BANK" ? "bg-sky-50 text-sky-700" : "bg-violet-50 text-violet-700"}`}>
+                      {tx.source === "BANK" ? "BANK" : "BUKU"}
+                    </span>
+                  </td>
                   <td className="px-3 py-1.5 text-slate-600">{formatDateID(tx.date)}</td>
                   <td className="px-3 py-1.5 text-slate-500">{tx.reference || "—"}</td>
                   <td className="max-w-xs truncate px-3 py-1.5 text-slate-800">{tx.description}</td>
@@ -183,11 +188,15 @@ function ConfirmedTable({ data, query }: { data: HydratedSessionResponse; query:
   const filtered = useMemo(() => {
     if (!query.trim()) return confirmed;
     const q = query.toLowerCase();
+    const digits = q.replace(/[^0-9]/g, "");
     return confirmed.filter((m) =>
       m.bankTx.description.toLowerCase().includes(q)
       || m.bookTx.description.toLowerCase().includes(q)
       || (m.bankTx.reference ?? "").toLowerCase().includes(q)
-      || (m.bookTx.reference ?? "").toLowerCase().includes(q),
+      || (m.bookTx.reference ?? "").toLowerCase().includes(q)
+      || m.bankTx.date.includes(q)
+      || m.bookTx.date.includes(q)
+      || (digits.length > 0 && (String(m.bankTx.amount).includes(digits) || String(m.bookTx.amount).includes(digits))),
     );
   }, [confirmed, query]);
 
