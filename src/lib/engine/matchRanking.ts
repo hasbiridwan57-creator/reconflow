@@ -80,7 +80,7 @@ export function rankMatchCandidates<T extends RankCandidateTx>(
     if (a.same !== b.same) return a.same ? -1 : 1;
     if (a.exact !== b.exact) return a.exact ? -1 : 1;
     if (a.amountDiff !== b.amountDiff) return a.amountDiff - b.amountDiff;
-    return a.dayDiff - b.dayDiff;
+    return a.dayDiff === b.dayDiff ? 0 : a.dayDiff - b.dayDiff;
   });
 
   // Skor ordinal (lebih tinggi = lebih cocok) — konsumen tak wajib memakainya.

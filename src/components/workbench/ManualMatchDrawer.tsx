@@ -186,7 +186,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
           <div className="flex items-center justify-between text-xs text-slate-600">
             <span>Total Bank: <b className="font-mono tabular-nums text-slate-900">{formatIDR(totalBank)}</b></span>
             <span>Total Buku: <b className="font-mono tabular-nums text-slate-900">{formatIDR(totalBook)}</b></span>
-            <span>Selisih: <b className={`font-mono tabular-nums ${diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b></span>
+            <span>Selisih: <b className={`font-mono tabular-nums ${oppositeDir ? "text-amber-600" : diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b>{oppositeDir && <span className="ml-1 text-amber-600">(Arah berlawanan)</span>}</span>
           </div>
           {oppositeDir && (
             <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-700">

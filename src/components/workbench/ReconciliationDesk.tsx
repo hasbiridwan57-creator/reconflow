@@ -124,14 +124,14 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
                 />
               )}
               <div className="mt-3 flex gap-2">
-                <button
+                <button type="button"
                   onClick={approve}
                   disabled={finalized || loading}
                   className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
                 >
                   {loading ? "Memproses..." : "Selesaikan Anomali"}
                 </button>
-                <button
+                <button type="button"
                   onClick={reject}
                   disabled={finalized || loading}
                   className="rounded-lg border border-rose-300 px-4 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60"
@@ -185,6 +185,7 @@ function SplitPairView({
   }, [selBook, bankItems]);
 
   const diff = selBank && selBook ? selBank.amount - selBook.amount : 0;
+  const oppositeDir = !!(selBank && selBook && selBank.direction !== selBook.direction);
   const [faultSide, setFaultSide] = useState<"BOOK" | "BANK">("BOOK");
 
   async function pair() {
@@ -255,7 +256,7 @@ function SplitPairView({
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
             <span>Bank terpilih: <b className="font-mono tabular-nums text-slate-900">{formatIDR(selBank.amount)}</b></span>
             <span>Buku terpilih: <b className="font-mono tabular-nums text-slate-900">{formatIDR(selBook.amount)}</b></span>
-            <span>Selisih: <b className={`font-mono tabular-nums ${diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b></span>
+            <span>Selisih: <b className={`font-mono tabular-nums ${oppositeDir ? "text-amber-600" : diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b>{oppositeDir && <span className="ml-1 text-amber-600">(Arah berlawanan)</span>}</span>
           </div>
           {diff !== 0 && (
             <select
@@ -333,20 +334,20 @@ function RoutineCard({
         {suggestion ? (
           <>
             {/* Rekomendasi auto-jurnal → aksi utama hijau */}
-            <button
+            <button type="button"
               onClick={() => classify(suggestion.category)}
               disabled={finalized || loading}
               className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               ✓ Catat · {getCategoryLabel(suggestion.category)} ({suggestion.impactLabel})
             </button>
-            <button onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-teal-600 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-teal-500">
+            <button type="button" onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-teal-600 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-teal-500">
               <Link2 className="h-3 w-3" /> Sudah ada di buku? Cari pasangan
             </button>
           </>
         ) : (
           /* Operasional biasa → tombol utama "Cari & Pasangkan" membuka drawer */
-          <button
+          <button type="button"
             onClick={onPair}
             disabled={finalized}
             className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-teal-500"
@@ -439,7 +440,7 @@ function BalanceMirror({ data, onGoReport }: { data: HydratedSessionResponse; on
         </div>
       </div>
       {s.isBalanced ? (
-        <button
+        <button type="button"
           onClick={onGoReport}
           className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
         >
@@ -464,7 +465,7 @@ function Accordion({ title, count, children, defaultOpen = false }: { title: str
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-lg border border-slate-200 bg-white">
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between p-4 text-left"
       >
@@ -590,11 +591,21 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     return [...collect(unmatchedRoutine.bank, "BANK"), ...collect(unmatchedRoutine.book, "BOOK")];
   }, [unmatchedRoutine]);
 
-  // Estimasi dampak neto bertanda: arah masuk (IN) menambah, keluar (OUT) mengurangi.
-  const bankAdjNetImpact = useMemo(
-    () => bankAdjItems.reduce((sum, it) => sum + (it.direction === "IN" ? it.amount : -it.amount), 0),
+  // Estimasi dampak bertanda per sisi + dampak neto ke angka Selisih.
+  // Selisih = Bank Disesuaikan − Buku Disesuaikan, maka:
+  //  • penyesuaian sisi BANK (source BANK): IN menambah Buku → bookAdjImpact
+  //  • penyesuaian sisi BUKU (source BOOK): IN menambah Bank → bankSideAdjImpact
+  //  • netDiffImpact = bankSideAdjImpact − bookAdjImpact (perubahan aktual pada Selisih)
+  const bookAdjImpact = useMemo(
+    () => bankAdjItems.filter((it) => it.source === "BANK").reduce((s, it) => s + (it.direction === "IN" ? it.amount : -it.amount), 0),
     [bankAdjItems],
   );
+  const bankSideAdjImpact = useMemo(
+    () => bankAdjItems.filter((it) => it.source === "BOOK").reduce((s, it) => s + (it.direction === "IN" ? it.amount : -it.amount), 0),
+    [bankAdjItems],
+  );
+  const netDiffImpact = bankSideAdjImpact - bookAdjImpact;
+  const mixedBatch = bankAdjItems.some((it) => it.source === "BANK") && bankAdjItems.some((it) => it.source === "BOOK");
 
   const pendingUnfinished = unmatchedRoutine.bank.length + unmatchedRoutine.book.length;
 
@@ -661,10 +672,10 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   // Esc menutup dialog konfirmasi batch.
   useEffect(() => {
     if (!showBatchConfirm) return;
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setShowBatchConfirm(false); }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !batchLoading) setShowBatchConfirm(false); }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showBatchConfirm]);
+  }, [showBatchConfirm, batchLoading]);
 
   return (
     <div className={`grid grid-cols-1 gap-6 ${viewMode === "split" ? "xl:grid-cols-12" : "lg:grid-cols-12"}`}>
@@ -680,7 +691,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 Untuk mengubah data, buka kembali sesi terlebih dahulu.
               </span>
             </div>
-            <button
+            <button type="button"
               onClick={doReopen}
               disabled={reopening}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
@@ -709,7 +720,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500" />
             <div className="mt-2 text-lg font-semibold text-emerald-700">Inbox Zero Tercapai!</div>
             <div className="mt-1 text-sm text-emerald-600">Semua transaksi beres & saldo seimbang.</div>
-            <button
+            <button type="button"
               onClick={onGoReport}
               className="mt-4 inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700"
             >
@@ -739,7 +750,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">Saran Pasangan Cocok ({suggestedPending.length})</h3>
-              <button
+              <button type="button"
                 onClick={approveAll}
                 disabled={finalized}
                 className="rounded-lg bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
@@ -760,12 +771,14 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 {/* Toggle tampilan: Daftar | Berdampingan (desktop lg+) */}
                 <div className="hidden lg:inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
                   <button
+                    type="button"
                     onClick={() => setViewMode("list")}
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-teal-500 ${viewMode === "list" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}
                   >
                     <List className="h-3.5 w-3.5" /> Daftar
                   </button>
                   <button
+                    type="button"
                     onClick={() => setViewMode("split")}
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-teal-500 ${viewMode === "split" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}
                   >
@@ -776,7 +789,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
             </div>
 
             {/* Triage tabs — disembunyikan di mode split (tak memfilter SplitPairView) */}
-            <div className={`flex flex-wrap items-center gap-2 ${viewMode === "split" ? "hidden lg:hidden" : ""}`}>
+            <div className={`flex flex-wrap items-center gap-2 ${viewMode === "split" ? "lg:hidden" : ""}`}>
               {([
                 ["ALL", "Semua Belum Selesai", pendingUnfinished],
                 ["BANK_ADJ", "Penyesuaian Bank", bankAdjItems.length],
@@ -785,6 +798,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 ["BOOK", "Sisi Buku", unmatchedRoutine.book.length],
               ] as const).map(([key, label, count]) => (
                 <button
+                  type="button"
                   key={key}
                   onClick={() => setTriage(key)}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition focus-visible:ring-2 focus-visible:ring-teal-500 ${triage === key ? "bg-teal-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
@@ -798,21 +812,22 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
             {bankAdjItems.length >= 2 && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3">
                 <div className="text-sm text-emerald-800">
-                  <b>{bankAdjItems.length} rekomendasi auto-jurnal</b> biaya/bunga bank siap dicatat.
+                  <b>{bankAdjItems.length} rekomendasi penyesuaian otomatis</b> siap diterapkan.{mixedBatch ? " Termasuk campuran penyesuaian sisi Bank & Buku." : ""}
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowBatchConfirm(true)}
                   disabled={finalized}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
-                  Terapkan {bankAdjItems.length} Rekomendasi Auto-Jurnal
+                  Terapkan {bankAdjItems.length} Rekomendasi Penyesuaian
                 </button>
               </div>
             )}
             {viewMode === "split" && (
               <>
                 {/* Di viewport <lg paksa tampilan list agar user tak terjebak mode split */}
-                <div className="lg:hidden">
+                <div className="space-y-3 lg:hidden">
                   {filteredRoutine.bank.map((tx) => (
                     <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
                   ))}
@@ -871,14 +886,15 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       {/* Dialog konfirmasi batch auto-jurnal */}
       {showBatchConfirm && bankAdjItems.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Konfirmasi batch auto-jurnal">
-          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setShowBatchConfirm(false)} />
+          {/* Kunci penutupan saat loading */}
+          <div className="absolute inset-0 bg-slate-900/40" onClick={() => { if (!batchLoading) setShowBatchConfirm(false); }} />
           <div className="relative w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900">Terapkan {bankAdjItems.length} Rekomendasi Auto-Jurnal?</h4>
+                <h4 className="text-sm font-semibold text-slate-900">Terapkan {bankAdjItems.length} Rekomendasi Penyesuaian Otomatis?</h4>
                 <p className="mt-0.5 text-xs text-slate-500">Item berikut akan dicatat sebagai jurnal penyesuaian.</p>
               </div>
-              <button onClick={() => setShowBatchConfirm(false)} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+              <button type="button" onClick={() => { if (!batchLoading) setShowBatchConfirm(false); }} disabled={batchLoading} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
             </div>
             <ul className="mt-3 max-h-56 space-y-1.5 overflow-y-auto">
               {bankAdjItems.map((it) => (
@@ -889,12 +905,12 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 </li>
               ))}
             </ul>
-            <div className="mt-3 text-xs text-slate-500">
-              Estimasi dampak neto ke selisih rekonsiliasi:{" "}
-              <b className={`font-mono tabular-nums ${bankAdjNetImpact === 0 ? "text-slate-900" : bankAdjNetImpact > 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                {formatIDRAccountingShort(bankAdjNetImpact)}
-              </b>{" "}
-              (arah masuk ditambah, keluar dikurangi).
+            {/* Rincian dampak per sisi + dampak neto ke Selisih */}
+            <div className="mt-3 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <div className="flex items-center justify-between"><span>Dampak ke Sisi Bank</span><b className="font-mono tabular-nums text-slate-900">{formatIDRAccountingShort(bankSideAdjImpact)}</b></div>
+              <div className="flex items-center justify-between"><span>Dampak ke Sisi Buku</span><b className="font-mono tabular-nums text-slate-900">{formatIDRAccountingShort(bookAdjImpact)}</b></div>
+              <div className="flex items-center justify-between border-t border-slate-200 pt-1"><span className="font-medium">Perubahan neto pada Selisih</span><b className={`font-mono tabular-nums ${netDiffImpact === 0 ? "text-slate-900" : netDiffImpact > 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDRAccountingShort(netDiffImpact)}</b></div>
+              <p className="text-[10px] text-slate-400">Selisih = Bank Disesuaikan − Buku Disesuaikan.</p>
             </div>
             <div className="mt-4 flex gap-2">
               <button
@@ -984,7 +1000,7 @@ function AnomalyTxCard({
         <span className="font-medium">{suggestion.reason}</span>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
+        <button type="button"
           onClick={() => classify(suggestion.category)}
           disabled={finalized || loading}
           className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
@@ -1049,12 +1065,12 @@ function SuggestedCardList({ data, onRefresh, suggestedPending }: { data: Hydrat
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">Confidence {m.confidenceScore}%</span>
             {m.reasons.slice(0, 2).map((r, i) => <span key={i} className="rounded-full bg-slate-50 px-2 py-0.5 text-slate-500">{r}</span>)}
             <div className="ml-auto flex gap-2">
-              <button
+              <button type="button"
                 onClick={() => act(m, "APPROVE")}
                 disabled={finalized || loadingId === m.id}
                 className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
               >Cocokkan</button>
-              <button
+              <button type="button"
                 onClick={() => act(m, "REJECT")}
                 disabled={finalized || loadingId === m.id}
                 className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60"
@@ -1083,7 +1099,7 @@ function AdjustmentList({ data, onRefresh }: { data: HydratedSessionResponse; on
           <div className="flex items-center gap-3">
             <span className="font-mono text-sm tabular-nums text-slate-900">{formatIDRAccountingShort(a.signedAmount)}</span>
             {!finalized && (
-              <button
+              <button type="button"
                 onClick={async () => {
                   try {
                     let updated;
