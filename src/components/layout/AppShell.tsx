@@ -184,9 +184,11 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* Seksi REKENING AKTIF — min-h-0 + overflow-y-auto agar daftar bisa
-          di-scroll independen (Safari) tanpa mendorong footer keluar layar. */}
-      <div className="flex min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      {/* Seksi REKENING AKTIF — min-h-0 (WAJIB, agar flex item boleh menyusut)
+          + overflow-y-auto → daftar bisa di-scroll independen di Safari tanpa
+          mendorong footer keluar layar. JANGAN tambahkan `flex` (dulu sempat
+          membuat item tersusun horizontal). */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         <div className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
           Rekening Aktif
         </div>
