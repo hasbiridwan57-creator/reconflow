@@ -3,15 +3,17 @@ import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { CreateSessionSchema } from "@/lib/schemas/reconciliation";
 import { logAudit, runAndPersistAutoMatch, toPrismaTxInputs } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
-/** GET /api/sessions — daftar semua sesi (ringkasan). */
+/** GET /api/sessions — daftar sesi MILIK pengunjung ini saja (isolasi workspace). */
 export async function GET(request: Request) {
   try {
+    const { ownerKey } = getWorkspaceKey(request);
     const url = new URL(request.url);
     const q = url.searchParams.get("q") ?? "";
     const status = url.searchParams.get("status") ?? "";
 
-    const where: Prisma.ReconciliationSessionWhereInput = {};
+    const where: Prisma.ReconciliationSessionWhereInput = { ownerKey };
     if (q) {
       where.OR = [
         { companyName: { contains: q, mode: "insensitive" } },
@@ -77,6 +79,7 @@ export async function GET(request: Request) {
 /** POST /api/sessions — buat sesi dari CSV mentah + auto-match awal. */
 export async function POST(request: Request) {
   try {
+    const { ownerKey } = getWorkspaceKey(request);
     const body = await request.json();
     const parsed = CreateSessionSchema.safeParse(body);
     if (!parsed.success) {
@@ -93,6 +96,7 @@ export async function POST(request: Request) {
 
     const session = await prisma.reconciliationSession.create({
       data: {
+        ownerKey,
         companyName: input.companyName,
         bankAccountName: input.bankAccountName,
         periodLabel: input.periodLabel,

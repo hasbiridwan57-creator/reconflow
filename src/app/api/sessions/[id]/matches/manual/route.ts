@@ -4,7 +4,8 @@ import { ManualPairSchema } from "@/lib/schemas/reconciliation";
 import { resolveDiscrepancyAdjustment } from "@/lib/engine/discrepancy";
 import type { CashDirection } from "@/lib/schemas/reconciliation";
 import { dateDiffDays } from "@/lib/engine/parser";
-import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
+import { finalizeMutationResponse, requireEditableSession, notFoundResponse } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
 /** POST /api/sessions/[id]/matches/manual — pasangkan manual (spec §7 endpoint 10). */
 export async function POST(
@@ -13,9 +14,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const session = await prisma.reconciliationSession.findUnique({ where: { id }, select: { id: true } });
-    if (!session) return notFoundResponse("Sesi");
-    await assertNotFinalized(id);
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireEditableSession(id, ownerKey);
 
     const body = await request.json();
     const parsed = ManualPairSchema.safeParse(body);
@@ -86,10 +86,12 @@ export async function POST(
       return createdMatch;
     });
 
-    await recomputeSessionStatus(id);
-    await logAudit(id, "MANUAL_PAIRED", `Manual match: ${bankTxId} <-> ${bookTxId}.`, { bankTxId, bookTxId, auditNote });
-
-    const hydrated = await getHydratedSession(id);
+    const hydrated = await finalizeMutationResponse(
+      id,
+      "MANUAL_PAIRED",
+      `Manual match: ${bankTxId} <-> ${bookTxId}.`,
+      { bankTxId, bookTxId, auditNote },
+    );
     return success(hydrated);
   } catch (error) {
     return handleError(error);

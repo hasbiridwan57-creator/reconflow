@@ -35,19 +35,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * Notifikasi ringan agar sidebar multi-account me-refresh daftar rekening
+ * Notifikasi ringan agar sidebar multi-account memperbarui daftar rekening
  * secara real-time tanpa full refresh. Dipicu setelah tiap mutasi sesi.
+ * Jika `detail` berisi HydratedSessionResponse, sidebar memperbarui baris
+ * sesi yang sudah ada LANGSUNG DI MEMORI (tanpa GET /api/sessions).
  */
-export function notifySessionsChanged(): void {
+export function notifySessionsChanged(detail?: HydratedSessionResponse | { id: string }): void {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("reconflow:sessions-changed"));
+    window.dispatchEvent(new CustomEvent("reconflow:sessions-changed", { detail }));
   }
 }
 
 /** Wrapper: jalankan mutasi lalu beri tahu sidebar multi-account. */
 async function mutate<T>(fn: () => Promise<T>): Promise<T> {
   const result = await fn();
-  notifySessionsChanged();
+  if (result && typeof result === "object" && "id" in result) {
+    notifySessionsChanged(result as HydratedSessionResponse | { id: string });
+  } else {
+    notifySessionsChanged();
+  }
   return result;
 }
 

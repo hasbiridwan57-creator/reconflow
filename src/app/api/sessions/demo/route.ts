@@ -4,10 +4,12 @@ import { CreateDemoSessionSchema } from "@/lib/schemas/reconciliation";
 import { DEMO_SCENARIOS, DEFAULT_MATCHING_CONFIG } from "@/lib/demo/scenarios";
 import { parseCsvToTransactions } from "@/lib/csvToTx";
 import { logAudit, runAndPersistAutoMatch, toPrismaTxInputs } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
 /** POST /api/sessions/demo — buat sesi demo dari dataset bawaan (spec §7 endpoint 4). */
 export async function POST(request: Request) {
   try {
+    const { ownerKey } = getWorkspaceKey(request);
     const body = await request.json();
     const parsed = CreateDemoSessionSchema.safeParse(body);
     if (!parsed.success) {
@@ -24,6 +26,7 @@ export async function POST(request: Request) {
 
     const session = await prisma.reconciliationSession.create({
       data: {
+        ownerKey,
         companyName: scenario.companyName,
         bankAccountName: scenario.bankAccountName,
         periodLabel: scenario.periodLabel,

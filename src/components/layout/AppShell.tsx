@@ -38,7 +38,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void loadSessions();
-    const onSessionsChanged = () => void loadSessions();
+    const onSessionsChanged = (e: Event) => {
+      // Optimasi: jika event membawa HydratedSessionResponse, perbarui baris
+      // sesi yang sudah ada DI MEMORI tanpa GET /api/sessions.
+      const detail = (e as CustomEvent).detail as
+        | { id?: string; session?: { id: string; status: string; demoScenarioKey: string | null; endingBankBalance: number; endingBookBalance: number }; summary?: { variance: number; unclassifiedCount: number } }
+        | { id: string }
+        | undefined;
+      const sid = detail && "session" in detail ? detail.session?.id : (detail as { id: string } | undefined)?.id;
+      if (detail && "session" in detail && detail.session && sid) {
+        setSessions((prev) => {
+          const idx = prev.findIndex((s) => s.id === sid);
+          if (idx === -1) return prev; // sesi baru → biarkan fetch berikutnya yang menambahkan
+          const s = detail.session!;
+          const updated = {
+            ...prev[idx],
+            status: s.status,
+            demoScenarioKey: s.demoScenarioKey,
+            endingBankBalance: s.endingBankBalance,
+            endingBookBalance: s.endingBookBalance,
+            variance: detail.summary?.variance ?? prev[idx].variance,
+            unclassifiedCount: detail.summary?.unclassifiedCount ?? prev[idx].unclassifiedCount,
+          };
+          const next = [...prev];
+          next[idx] = updated;
+          return next;
+        });
+        return;
+      }
+      // Sesi baru dihapus (delete) / tanpa detail → refetch daftar.
+      void loadSessions();
+    };
     window.addEventListener("reconflow:sessions-changed", onSessionsChanged);
     return () => window.removeEventListener("reconflow:sessions-changed", onSessionsChanged);
   }, [loadSessions]);

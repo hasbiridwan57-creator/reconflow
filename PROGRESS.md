@@ -90,6 +90,16 @@
 ### Temuan & Perbaikan Fase 5 (audit mandiri) — KRITIS
 1. **BUG AKUNTANSI KRITIS (ditemukan & diperbaiki):** Di `PATCH .../matches/[matchId]` (approve route), `signedAmount` penyesuaian **DISCREPANCY_MATCH dihitung terbalik** (`-absDiff`). Akibatnya saat approve transposition error BBM (B-502↔JKK-301, selisih Rp 90.000, faultSide BOOK) lewat **API hidup**, penyesuaian salah arah (−90.000) → variance audit menjadi **2× selisih = Rp 180.000** (bukan Rp 0). Unit test lolos karena helper menghitung `signedAmount = -amountDiff` dengan benar — divergensi logika antara helper & route inilah gap yang tak tertangkap test murni. **Fix:** sinkronkan route ke ground truth helper (`signedAmount = isBook ? -amountDiff : +amountDiff`, kategori mengikuti arah). Verifikasi: smoke API ketiga skenario kini **semua variance Rp 0, isBalanced true, jurnal seimbang, ekspor valid**.
 
+## Isolasi Workspace Cookie + Optimasi Vercel-Neon — 2026-11-21
+- [x] **Skema**: `ReconciliationSession.ownerKey` (default `"public"`) + index `@@index([ownerKey, updatedAt])`.
+- [x] **Middleware** `src/middleware.ts`: cookie `rf_workspace_id` (UUID, httpOnly, sameSite lax, 1 tahun, secure di prod) + header internal `x-rf-workspace-id`.
+- [x] **Helper `src/lib/workspace.ts`** (pure, Vitest-friendly): `getWorkspaceKey`, `attachWorkspaceCookie`, `canAccessSession` (pemilik ATAU `"public"` showcase).
+- [x] **Isolasi API**: `GET /sessions` filter `ownerKey`; semua endpoint `[id]` cek ownership (lain → 404). DELETE hanya pemilik (showcase tak bisa dihapus pengunjung lain).
+- [x] **Optimasi backend**: `requireEditableSession` (1× findUnique utk ada+ownership+status) & `finalizeMutationResponse` (logAudit + hydrate 1×, hitung nextStatus dari memori).
+- [x] **Optimasi frontend**: `onRefresh(updated?)` langsung pakai respons mutasi (tanpa GET ulang); sidebar update baris sesi in-memory via `CustomEvent` detail.
+- [x] **Region**: `vercel.json` → `["sin1"]` (sejajar Neon aws-ap-southeast-1).
+- [x] **Gate**: tsc 0 · lint 0 · test 103 pass + 6 workspace baru (1 skip DB) · build exit 0 (middleware 34.1 kB).
+
 ## Migrasi PostgreSQL (Neon) + Deployment — TAHAP 1
 - [x] **Prisma → PostgreSQL**: datasource provider `sqlite`→`postgresql` (url tetap `env(DATABASE_URL)`).
 - [x] **package.json**: `postinstall: prisma generate`; `build: prisma generate && next build` (hapus `--turbopack` agar stabil di Vercel serverless).

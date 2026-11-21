@@ -1,9 +1,12 @@
-import { getHydratedSession, notFoundResponse } from "@/lib/session";
+import { getHydratedSession, notFoundResponse, requireSessionAccess } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 import { generateExcel, excelFileName } from "@/lib/export/excelGenerator";
 
 /** GET /api/sessions/[id]/export/excel — unduh Workbook 4-sheet (spec §7 endpoint 16). */
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { ownerKey } = getWorkspaceKey(request);
+  await requireSessionAccess(id, ownerKey);
   const session = await getHydratedSession(id);
   if (!session) return notFoundResponse("Sesi");
 

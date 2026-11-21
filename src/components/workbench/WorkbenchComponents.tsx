@@ -19,7 +19,7 @@ import {
 } from "recharts";
 
 /* ---------- MatchingControlsBar ---------- */
-export function MatchingControlsBar({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: () => void }) {
+export function MatchingControlsBar({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void }) {
   const [days, setDays] = useState(data.session.dateToleranceDays);
   const [amount, setAmount] = useState(data.session.amountToleranceRupiah);
   const [transposition, setTransposition] = useState(data.session.detectTransposition);
@@ -33,9 +33,9 @@ export function MatchingControlsBar({ data, onRefresh }: { data: HydratedSession
       await api.updateSession(data.session.id, {
         dateToleranceDays: days, amountToleranceRupiah: amount, detectTransposition: transposition,
       });
-      await api.reRunMatch(data.session.id);
+      const updated = await api.reRunMatch(data.session.id);
       toast.success("Auto-match dijalankan ulang.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally { setRunning(false); }
@@ -68,7 +68,7 @@ export function MatchingControlsBar({ data, onRefresh }: { data: HydratedSession
 /* ---------- ConfirmedMatchesTab ---------- */
 const confirmedColumnHelper = createColumnHelper<MatchPairDTO>();
 
-export function ConfirmedMatchesTab({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: () => void }) {
+export function ConfirmedMatchesTab({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void }) {
   const finalized = data.session.status === "FINALIZED";
   const confirmed = data.matches.filter((m) => m.isConfirmed);
   const [search, setSearch] = useState("");
@@ -86,7 +86,7 @@ export function ConfirmedMatchesTab({ data, onRefresh }: { data: HydratedSession
     helper.display({ id: "actions", header: "", cell: (i) => (
       <button
         onClick={async () => {
-          try { await api.deleteMatch(data.session.id, i.row.original.id); toast.success("Unmatched."); onRefresh(); }
+          try { const updated = await api.deleteMatch(data.session.id, i.row.original.id); toast.success("Unmatched."); onRefresh(updated); }
           catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
         }}
         disabled={finalized}

@@ -17,6 +17,7 @@ model ReconciliationSession {
   reviewedBy            String   @default("Manajer Keuangan")
   status                String   @default("DRAFT") // DRAFT | BALANCED | FINALIZED
   demoScenarioKey       String?  // null | "umkm" | "ecommerce" | "audit"
+  ownerKey              String   @default("public") // isolasi workspace per pengunjung (cookie)
 
   // Saldo disimpan sebagai Float (exact integer Rupiah hingga 9 kuadriliun)
   openingBalance        Float    @default(0)
@@ -36,6 +37,8 @@ model ReconciliationSession {
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@index([ownerKey, updatedAt])
 }
 
 model Transaction {

@@ -2,13 +2,15 @@ import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { UpdateAdjustmentSchema, AdjustmentCategorySchema } from "@/lib/schemas/reconciliation";
 import { buildAdjustmentFields } from "@/lib/engine/adjustments";
-import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
+import { finalizeMutationResponse, requireEditableSession, notFoundResponse } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
 /** PATCH & DELETE /api/sessions/[id]/adjustments/[adjId] (spec §7 endpoint 13). */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; adjId: string }> }) {
   try {
     const { id, adjId } = await params;
-    await assertNotFinalized(id);
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireEditableSession(id, ownerKey);
     const body = await request.json();
     const parsed = UpdateAdjustmentSchema.safeParse(body);
     if (!parsed.success) {
@@ -33,28 +35,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     await prisma.classifiedAdjustment.update({ where: { id: adjId }, data });
-    await recomputeSessionStatus(id);
-    await logAudit(id, "ADJUSTMENT_UPDATED", `Penyesuaian ${adjId} diperbarui.`, data);
-
-    const hydrated = await getHydratedSession(id);
+    const hydrated = await finalizeMutationResponse(id, "ADJUSTMENT_UPDATED", `Penyesuaian ${adjId} diperbarui.`, data);
     return success(hydrated);
   } catch (error) {
     return handleError(error);
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; adjId: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string; adjId: string }> }) {
   try {
     const { id, adjId } = await params;
-    await assertNotFinalized(id);
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireEditableSession(id, ownerKey);
     const adj = await prisma.classifiedAdjustment.findUnique({ where: { id: adjId } });
     if (!adj || adj.sessionId !== id) return notFoundResponse("Penyesuaian");
 
     await prisma.classifiedAdjustment.delete({ where: { id: adjId } });
-    await recomputeSessionStatus(id);
-    await logAudit(id, "ADJUSTMENT_DELETED", `Penyesuaian ${adjId} dihapus.`);
-
-    const hydrated = await getHydratedSession(id);
+    const hydrated = await finalizeMutationResponse(id, "ADJUSTMENT_DELETED", `Penyesuaian ${adjId} dihapus.`);
     return success(hydrated);
   } catch (error) {
     return handleError(error);

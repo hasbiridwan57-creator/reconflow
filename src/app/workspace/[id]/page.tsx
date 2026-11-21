@@ -24,13 +24,22 @@ export default function WorkspacePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      setData(await api.getSession(id));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal memuat sesi.");
-    }
-  }, [id]);
+  const refresh = useCallback(
+    async (updated?: HydratedSessionResponse) => {
+      // Optimasi: jika mutasi mengembalikan HydratedSessionResponse yang sudah
+      // lengkap, langsung pakai — jangan menembak GET /api/sessions/[id] lagi.
+      if (updated) {
+        setData(updated);
+        return;
+      }
+      try {
+        setData(await api.getSession(id));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Gagal memuat sesi.");
+      }
+    },
+    [id],
+  );
 
   useEffect(() => { void refresh(); }, [refresh]);
 

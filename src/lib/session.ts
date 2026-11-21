@@ -5,7 +5,8 @@
  */
 import { db as prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { conflict } from "@/lib/api";
+import { conflict, notFound } from "@/lib/api";
+import { canAccessSession } from "@/lib/workspace";
 import type { MatchingConfig, NormalizedTransactionInput } from "@/lib/schemas/reconciliation";
 import type {
   Transaction,
@@ -262,9 +263,8 @@ export function notFoundResponse(entity: string): NextResponse {
 
 /**
  * Guard mutasi sesi FINALIZED: lempar ApiError CONFLICT 409
- * (ditangkap handleError -> NextResponse 409).
- * Panggil SETELAH cek not-found di route. Dipakai di seluruh endpoint mutasi
- * agar sesi terkunci tak bisa diubah (spec §6 + Gemini audit #3).
+ * (ditangkap handleError -> NextResponse 409). Panggil SETELAH cek not-found di route.
+ * Dipakai di seluruh endpoint mutasi agar sesi terkunci tak bisa diubah (spec §6 + Gemini audit #3).
  */
 export async function assertNotFinalized(sessionId: string): Promise<void> {
   const session = await prisma.reconciliationSession.findUnique({
@@ -274,6 +274,60 @@ export async function assertNotFinalized(sessionId: string): Promise<void> {
   if (session?.status === "FINALIZED") {
     conflict("Sesi sudah FINALIZED. Buka kembali (REOPEN) terlebih dahulu.");
   }
+}
+
+/**
+ * Optimasi: 1× findUnique untuk sekaligus mengecek (1) sesi ada → 404,
+ * (2) ownership sah → 404, (3) status ≠ FINALIZED → 409.
+ * Menggantikan pola lama findUnique + assertNotFinalized (2 query).
+ */
+export async function requireEditableSession(sessionId: string, ownerKey: string) {
+  const session = await prisma.reconciliationSession.findUnique({ where: { id: sessionId } });
+  if (!session) notFound("Sesi");
+  if (!canAccessSession(session.ownerKey, ownerKey)) notFound("Sesi");
+  if (session.status === "FINALIZED") {
+    conflict("Sesi sudah FINALIZED. Buka kembali (REOPEN) terlebih dahulu.");
+  }
+  return session;
+}
+
+/**
+ * Versi read-only: cek sesi ada + ownership sah dalam 1× findUnique
+ * (tanpa guard FINALIZED). Untuk GET/[id], export PDF/Excel, dan finalize.
+ */
+export async function requireSessionAccess(sessionId: string, ownerKey: string) {
+  const session = await prisma.reconciliationSession.findUnique({ where: { id: sessionId } });
+  if (!session) notFound("Sesi");
+  if (!canAccessSession(session.ownerKey, ownerKey)) notFound("Sesi");
+  return session;
+}
+
+/**
+ * Optimasi response mutasi: logAudit + getHydratedSession 1× (bukan 2×
+ * seperti recomputeSessionStatus + getHydratedSession). Status berikutnya
+ * dihitung dari hydrated yang sudah di memori; hanya update bila berubah.
+ */
+export async function finalizeMutationResponse(
+  sessionId: string,
+  action: string,
+  summary: string,
+  metadata?: Record<string, unknown>,
+): Promise<HydratedSessionResponse> {
+  await logAudit(sessionId, action, summary, metadata);
+  const hydrated = await getHydratedSession(sessionId);
+  if (!hydrated) notFound("Sesi");
+  const nextStatus = hydrated.summary.isBalanced ? "BALANCED" : "DRAFT";
+  if (
+    hydrated.session.status !== "FINALIZED" &&
+    hydrated.session.status !== nextStatus
+  ) {
+    await prisma.reconciliationSession.update({
+      where: { id: sessionId },
+      data: { status: nextStatus },
+    });
+    hydrated.session.status = nextStatus;
+  }
+  return hydrated;
 }
 
 /** Catat AuditLog (spec §6: setiap mutasi WAJIB audit trail). */

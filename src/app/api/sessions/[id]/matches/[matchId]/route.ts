@@ -3,7 +3,8 @@ import { success, failure, handleError } from "@/lib/api";
 import { MatchActionSchema } from "@/lib/schemas/reconciliation";
 import { resolveDiscrepancyAdjustment } from "@/lib/engine/discrepancy";
 import type { CashDirection } from "@/lib/schemas/reconciliation";
-import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
+import { finalizeMutationResponse, requireEditableSession, notFoundResponse } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
 /** PATCH /api/sessions/[id]/matches/[matchId] — approve/reject (spec §7 endpoint 9). */
 export async function PATCH(
@@ -12,16 +13,14 @@ export async function PATCH(
 ) {
   try {
     const { id, matchId } = await params;
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireEditableSession(id, ownerKey);
     const body = await request.json();
     const parsed = MatchActionSchema.safeParse(body);
     if (!parsed.success) {
       return failure("VALIDATION_ERROR", "Payload tidak valid.", 422, parsed.error.issues);
     }
     const { action, discrepancyResolution } = parsed.data;
-
-    const session = await prisma.reconciliationSession.findUnique({ where: { id }, select: { id: true } });
-    if (!session) return notFoundResponse("Sesi");
-    await assertNotFinalized(id);
 
     const match = await prisma.matchPair.findUnique({
       where: { id: matchId },
@@ -41,8 +40,8 @@ export async function PATCH(
         await tx.classifiedAdjustment.deleteMany({ where: { matchPairId: matchId } });
         await tx.matchPair.delete({ where: { id: matchId } });
       });
-      await recomputeSessionStatus(id);
-      await logAudit(id, "MATCH_REJECTED", `Match ${matchId} ditolak.`);
+      const hydrated = await finalizeMutationResponse(id, "MATCH_REJECTED", `Match ${matchId} ditolak.`);
+      return success(hydrated);
     } else {
       // APPROVE — guard double-approve agar tidak membuat adjustment duplikat.
       if (match.isConfirmed) {
@@ -76,12 +75,9 @@ export async function PATCH(
         }
       });
 
-      await recomputeSessionStatus(id);
-      await logAudit(id, "MATCH_APPROVED", `Match ${matchId} disetujui.`);
+      const hydrated = await finalizeMutationResponse(id, "MATCH_APPROVED", `Match ${matchId} disetujui.`);
+      return success(hydrated);
     }
-
-    const hydrated = await getHydratedSession(id);
-    return success(hydrated);
   } catch (error) {
     return handleError(error);
   }
@@ -89,14 +85,13 @@ export async function PATCH(
 
 /** DELETE /api/sessions/[id]/matches/[matchId] — unmatch (spec §7 endpoint 11). */
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; matchId: string }> },
 ) {
   try {
     const { id, matchId } = await params;
-    const session = await prisma.reconciliationSession.findUnique({ where: { id }, select: { id: true } });
-    if (!session) return notFoundResponse("Sesi");
-    await assertNotFinalized(id);
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireEditableSession(id, ownerKey);
 
     const match = await prisma.matchPair.findUnique({ where: { id: matchId } });
     if (!match || match.sessionId !== id) return notFoundResponse("Match");
@@ -105,10 +100,7 @@ export async function DELETE(
       await tx.classifiedAdjustment.deleteMany({ where: { matchPairId: matchId } });
       await tx.matchPair.delete({ where: { id: matchId } });
     });
-    await recomputeSessionStatus(id);
-    await logAudit(id, "UNMATCHED", `Match ${matchId} dibatalkan kembali ke pool UNMATCHED.`);
-
-    const hydrated = await getHydratedSession(id);
+    const hydrated = await finalizeMutationResponse(id, "UNMATCHED", `Match ${matchId} dibatalkan kembali ke pool UNMATCHED.`);
     return success(hydrated);
   } catch (error) {
     return handleError(error);

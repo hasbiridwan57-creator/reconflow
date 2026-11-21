@@ -2,12 +2,15 @@ import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { CreateAdjustmentSchema, AdjustmentCategorySchema } from "@/lib/schemas/reconciliation";
 import { buildAdjustmentFields } from "@/lib/engine/adjustments";
-import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
+import { finalizeMutationResponse, requireEditableSession, notFoundResponse } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
 /** POST /api/sessions/[id]/adjustments — klasifikasi penyesuaian (spec §7 endpoint 12). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireEditableSession(id, ownerKey);
     const body = await request.json();
     const parsed = CreateAdjustmentSchema.safeParse(body);
     if (!parsed.success) {
@@ -18,10 +21,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!transactionId && !matchPairId) {
       return failure("VALIDATION_ERROR", "Wajib isi transactionId ATAU matchPairId.", 422);
     }
-
-    const session = await prisma.reconciliationSession.findUnique({ where: { id } });
-    if (!session) return notFoundResponse("Sesi");
-    await assertNotFinalized(id);
 
     const categoryEnum = AdjustmentCategorySchema.parse(category);
 
@@ -50,10 +49,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       },
     });
 
-    await recomputeSessionStatus(id);
-    await logAudit(id, "ADJUSTMENT_CREATED", `Penyesuaian ${categoryEnum} (${side}) sebesar Rp ${signedAmount.toLocaleString("id-ID")}.`, { adjustmentId: adjustment.id });
-
-    const hydrated = await getHydratedSession(id);
+    const hydrated = await finalizeMutationResponse(
+      id,
+      "ADJUSTMENT_CREATED",
+      `Penyesuaian ${categoryEnum} (${side}) sebesar Rp ${signedAmount.toLocaleString("id-ID")}.`,
+      { adjustmentId: adjustment.id },
+    );
     return success(hydrated, 201);
   } catch (error) {
     return handleError(error);

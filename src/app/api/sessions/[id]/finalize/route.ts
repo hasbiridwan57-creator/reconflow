@@ -1,12 +1,15 @@
 import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { FinalizeSessionSchema } from "@/lib/schemas/reconciliation";
-import { getHydratedSession, logAudit, notFoundResponse } from "@/lib/session";
+import { getHydratedSession, logAudit, requireSessionAccess } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
 /** POST /api/sessions/[id]/finalize — FINALIZE / REOPEN (spec §7 endpoint 14). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireSessionAccess(id, ownerKey);
     const body = await request.json().catch(() => ({}));
     const parsed = FinalizeSessionSchema.safeParse(body);
     if (!parsed.success) {
@@ -14,12 +17,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const { action, preparedBy, reviewedBy } = parsed.data;
 
-    const session = await prisma.reconciliationSession.findUnique({ where: { id } });
-    if (!session) return notFoundResponse("Sesi");
+    // Hydrate 1× untuk validasi FINALIZE; dipakai ulang untuk response.
+    const hydrated = await getHydratedSession(id);
+    if (!hydrated) return failure("NOT_FOUND", "Sesi tidak ditemukan.", 404);
 
     if (action === "FINALIZE") {
-      const hydrated = await getHydratedSession(id);
-      if (!hydrated) return notFoundResponse("Sesi");
       const s = hydrated.summary;
       if (!s.isBalanced) {
         const details: string[] = [];
@@ -34,13 +36,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (reviewedBy) updateData.reviewedBy = reviewedBy;
       await prisma.reconciliationSession.update({ where: { id }, data: updateData });
       await logAudit(id, "SESSION_FINALIZED", `Sesi difinalisasi (BALANCED Rp 0).`);
+      hydrated.session.status = "FINALIZED";
+      if (preparedBy) hydrated.session.preparedBy = preparedBy;
+      if (reviewedBy) hydrated.session.reviewedBy = reviewedBy;
     } else {
       // REOPEN
       await prisma.reconciliationSession.update({ where: { id }, data: { status: "DRAFT" } });
       await logAudit(id, "SESSION_REOPENED", `Sesi dibuka kembali ke DRAFT.`);
+      hydrated.session.status = "DRAFT";
     }
 
-    const hydrated = await getHydratedSession(id);
     return success(hydrated);
   } catch (error) {
     return handleError(error);

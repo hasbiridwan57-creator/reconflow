@@ -39,7 +39,7 @@ function SourceBadge({ source }: { source: "BANK" | "BOOK" }) {
 }
 
 /* ---------- Anomali & discrepancy card ---------- */
-function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse; onRefresh: () => void; match?: MatchPairDTO }) {
+function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void; match?: MatchPairDTO }) {
   const finalized = data.session.status === "FINALIZED";
   const [loading, setLoading] = useState(false);
   const [faultSide, setFaultSide] = useState<"BOOK" | "BANK">("BOOK");
@@ -49,7 +49,7 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
     if (!match) return;
     setLoading(true);
     try {
-      await api.approveMatch(data.session.id, match.id, {
+      const updated = await api.approveMatch(data.session.id, match.id, {
         action: "APPROVE",
         discrepancyResolution: {
           faultSide,
@@ -57,7 +57,7 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
         },
       });
       toast.success("Anomali diselesaikan.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
@@ -69,9 +69,9 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
     if (!match) return;
     setLoading(true);
     try {
-      await api.approveMatch(data.session.id, match.id, { action: "REJECT" });
+      const updated = await api.approveMatch(data.session.id, match.id, { action: "REJECT" });
       toast.info("Anomali ditolak.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
@@ -151,7 +151,7 @@ function RoutineCard({
 }: {
   tx: TransactionDTO;
   data: HydratedSessionResponse;
-  onRefresh: () => void;
+  onRefresh: (updated?: HydratedSessionResponse) => void;
   onPair: () => void;
   selected?: boolean;
 }) {
@@ -168,9 +168,9 @@ function RoutineCard({
   async function classify(category: AdjustmentCategory) {
     setLoading(true);
     try {
-      await api.createAdjustment(data.session.id, { transactionId: tx.id, category, description: tx.description });
+      const updated = await api.createAdjustment(data.session.id, { transactionId: tx.id, category, description: tx.description });
       toast.success("Diklasifikasi.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
@@ -329,7 +329,7 @@ function Accordion({ title, count, children, defaultOpen = false }: { title: str
 }
 
 /* ---------- Komponen utama ---------- */
-export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: HydratedSessionResponse; onRefresh: () => void; onGoReport: () => void }) {
+export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void; onGoReport: () => void }) {
   const finalized = data.session.status === "FINALIZED";
   const s = data.summary;
   const [filter, setFilter] = useState<"ALL" | "BANK" | "BOOK">("ALL");
@@ -416,9 +416,9 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   async function approveAll() {
     if (finalized) { toast.error("Sesi sudah FINALIZED."); return; }
     try {
-      await api.approveAllSuggested(data.session.id);
+      const updated = await api.approveAllSuggested(data.session.id);
       toast.success("Semua saran disetujui.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     }
@@ -432,9 +432,9 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       return;
     }
     try {
-      await api.createBulkAdjustments(data.session.id, items);
+      const updated = await api.createBulkAdjustments(data.session.id, items);
       toast.success(`${items.length} penyesuaian diterapkan.`);
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     }
@@ -443,9 +443,9 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   async function doReopen() {
     setReopening(true);
     try {
-      await api.finalize(data.session.id, { action: "REOPEN" });
+      const updated = await api.finalize(data.session.id, { action: "REOPEN" });
       toast.success("Sesi dibuka kembali (DRAFT).");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membuka sesi.");
     } finally {
@@ -461,12 +461,12 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   async function doManualPair() {
     if (!selectedBank || !selectedBook) return;
     try {
-      await api.manualPair(data.session.id, {
+      const updated = await api.manualPair(data.session.id, {
         bankTxId: selectedBank, bookTxId: selectedBook,
         ...(manualDiff !== 0 ? { discrepancyResolution: { faultSide: manualFaultSide } } : {}),
       });
       toast.success("Manual pair dibuat.");
-      setSelectedBank(null); setSelectedBook(null); onRefresh();
+      setSelectedBank(null); setSelectedBook(null); onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     }
@@ -679,7 +679,7 @@ function AnomalyTxCard({
   tx: TransactionDTO;
   suggestion: CategorySuggestion;
   data: HydratedSessionResponse;
-  onRefresh: () => void;
+  onRefresh: (updated?: HydratedSessionResponse) => void;
 }) {
   const finalized = data.session.status === "FINALIZED";
   const [loading, setLoading] = useState(false);
@@ -688,9 +688,9 @@ function AnomalyTxCard({
   async function classify(category: AdjustmentCategory) {
     setLoading(true);
     try {
-      await api.createAdjustment(data.session.id, { transactionId: tx.id, category, description: tx.description });
+      const updated = await api.createAdjustment(data.session.id, { transactionId: tx.id, category, description: tx.description });
       toast.success("Diklasifikasi.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
@@ -749,16 +749,16 @@ function AnomalyTxCard({
 }
 
 /* ---------- Kartu saran pasangan ---------- */
-function SuggestedCardList({ data, onRefresh, suggestedPending }: { data: HydratedSessionResponse; onRefresh: () => void; suggestedPending: MatchPairDTO[] }) {
+function SuggestedCardList({ data, onRefresh, suggestedPending }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void; suggestedPending: MatchPairDTO[] }) {
   const finalized = data.session.status === "FINALIZED";
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   async function act(m: MatchPairDTO, action: "APPROVE" | "REJECT") {
     setLoadingId(m.id);
     try {
-      await api.approveMatch(data.session.id, m.id, { action });
+      const updated = await api.approveMatch(data.session.id, m.id, { action });
       toast.success(action === "APPROVE" ? "Cocokkan." : "Ditolak.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
@@ -807,7 +807,7 @@ function SuggestedCardList({ data, onRefresh, suggestedPending }: { data: Hydrat
 }
 
 /* ---------- Daftar penyesuaian tercatat ---------- */
-function AdjustmentList({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: () => void }) {
+function AdjustmentList({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void }) {
   const finalized = data.session.status === "FINALIZED";
   return (
     <div className="space-y-2">
@@ -825,14 +825,15 @@ function AdjustmentList({ data, onRefresh }: { data: HydratedSessionResponse; on
               <button
                 onClick={async () => {
                   try {
+                    let updated;
                     if (a.matchPairId) {
-                      await api.deleteMatch(data.session.id, a.matchPairId);
+                      updated = await api.deleteMatch(data.session.id, a.matchPairId);
                       toast.success("Pasangan & penyesuaian dibatalkan.");
                     } else {
-                      await api.deleteAdjustment(data.session.id, a.id);
+                      updated = await api.deleteAdjustment(data.session.id, a.id);
                       toast.success("Dibatalkan.");
                     }
-                    onRefresh();
+                    onRefresh(updated);
                   } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
                 }}
                 className="text-xs text-slate-400 hover:text-rose-600"

@@ -1,19 +1,22 @@
 import { db as prisma } from "@/lib/db";
 import { success, handleError } from "@/lib/api";
-import { getHydratedSession, logAudit, recomputeSessionStatus, notFoundResponse, assertNotFinalized } from "@/lib/session";
+import { finalizeMutationResponse, requireEditableSession } from "@/lib/session";
+import { getWorkspaceKey } from "@/lib/workspace";
 
 /**
  * POST /api/sessions/[id]/matches/approve-all
  * Setujui SEMUA saran pasangan (SUGGESTED_MATCH) yang belum dikonfirmasi
  * dalam 1 transaksi atomik. DISCREPANCY_MATCH TIDAK disentuh (butuh keputusan
  * faultSide manual dari pengguna).
+ *
+ * Isolasi workspace: hanya pemilik sesi (atau showcase "public") boleh.
+ * Optimasi: 1× cek editable + 1× hydrate untuk response.
  */
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const session = await prisma.reconciliationSession.findUnique({ where: { id }, select: { id: true } });
-    if (!session) return notFoundResponse("Sesi");
-    await assertNotFinalized(id);
+    const { ownerKey } = getWorkspaceKey(request);
+    await requireEditableSession(id, ownerKey);
 
     const result = await prisma.$transaction(async (tx) => {
       // Hanya SUGGESTED_MATCH yang belum dikonfirmasi — JANGAN sentuh DISCREPANCY_MATCH.
@@ -29,10 +32,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       return { approved: pending.length };
     });
 
-    await recomputeSessionStatus(id);
-    await logAudit(id, "BULK_APPROVE_SUGGESTED", `Menyetujui ${result.approved} saran pasangan cocok sekaligus.`);
-
-    const hydrated = await getHydratedSession(id);
+    const hydrated = await finalizeMutationResponse(
+      id,
+      "BULK_APPROVE_SUGGESTED",
+      `Menyetujui ${result.approved} saran pasangan cocok sekaligus.`,
+    );
     return success(hydrated);
   } catch (error) {
     return handleError(error);

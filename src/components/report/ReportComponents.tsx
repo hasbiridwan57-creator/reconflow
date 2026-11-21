@@ -12,16 +12,16 @@ import { formatIDR } from "@/lib/format";
 import { FileText, FileSpreadsheet, Lock, Clock } from "lucide-react";
 
 /* ---------- AdjustingJournalTable ---------- */
-export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: () => void }) {
+export function AdjustingJournalTable({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void }) {
   const j = data.journals;
   const adjById = new Map(data.adjustments.map((a) => [a.id, a]));
   const finalized = data.session.status === "FINALIZED";
 
   async function updateContra(adjId: string, contraAccountName: string) {
     try {
-      await api.updateAdjustment(data.session.id, adjId, { contraAccountName });
+      const updated = await api.updateAdjustment(data.session.id, adjId, { contraAccountName });
       toast.success("Akun lawan diperbarui.");
-      onRefresh();
+      onRefresh(updated);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
   }
 
@@ -115,7 +115,7 @@ export function AuditLogTimeline({ data }: { data: HydratedSessionResponse }) {
 }
 
 /* ---------- ExportActionBar ---------- */
-export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: () => void }) {
+export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void }) {
   const [open, setOpen] = useState(false);
   const [preparedBy, setPreparedBy] = useState(data.session.preparedBy);
   const [reviewedBy, setReviewedBy] = useState(data.session.reviewedBy);
@@ -129,8 +129,8 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
         window.location.href = `/api/sessions/${data.session.id}/export/pdf`;
         return;
       }
-      await api.updateSession(data.session.id, { preparedBy, reviewedBy });
-      onRefresh();
+      const updated = await api.updateSession(data.session.id, { preparedBy, reviewedBy });
+      onRefresh(updated);
       window.location.href = `/api/sessions/${data.session.id}/export/pdf`;
       setOpen(false);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
@@ -143,9 +143,9 @@ export function ExportActionBar({ data, onRefresh }: { data: HydratedSessionResp
         <button
           onClick={async () => {
             try {
-              await api.finalize(data.session.id, { action: finalized ? "REOPEN" : "FINALIZE" });
+              const updated = await api.finalize(data.session.id, { action: finalized ? "REOPEN" : "FINALIZE" });
               toast.success(finalized ? "Sesi dibuka kembali." : "Sesi difinalisasi.");
-              onRefresh();
+              onRefresh(updated);
             } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal."); }
           }}
           disabled={!isBalanced && !finalized}
