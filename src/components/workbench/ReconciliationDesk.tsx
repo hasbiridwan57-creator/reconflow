@@ -15,6 +15,7 @@ import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconcilia
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
 import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2, Lock, Unlock } from "lucide-react";
 import { ConfirmedMatchesTab } from "@/components/workbench/WorkbenchComponents";
+import { ManualMatchDrawer } from "@/components/workbench/ManualMatchDrawer";
 
 /* Kategori per pane untuk dropdown manual. */
 const BANK_IN_CATS = ["INTEREST_INCOME", "UNRECORDED_RECEIPT", "BANK_ERROR_DEDUCT", "BOOK_ERROR_ADD"] as const;
@@ -147,13 +148,12 @@ function AnomalyCard({ data, onRefresh, match }: { data: HydratedSessionResponse
 
 /* ---------- Suggestion pill card untuk rutin ---------- */
 function RoutineCard({
-  tx, data, onRefresh, onPair, selected = false,
+  tx, data, onRefresh, onPair,
 }: {
   tx: TransactionDTO;
   data: HydratedSessionResponse;
   onRefresh: (updated?: HydratedSessionResponse) => void;
   onPair: () => void;
-  selected?: boolean;
 }) {
   const finalized = data.session.status === "FINALIZED";
   const [loading, setLoading] = useState(false);
@@ -179,7 +179,7 @@ function RoutineCard({
   }
 
   return (
-    <div className={`rounded-lg border bg-white p-4 ${selected ? "border-teal-300 ring-2 ring-teal-500 bg-teal-50/40" : "border-slate-200"}`}>
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -333,9 +333,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   const finalized = data.session.status === "FINALIZED";
   const s = data.summary;
   const [filter, setFilter] = useState<"ALL" | "BANK" | "BOOK">("ALL");
-  const [selectedBank, setSelectedBank] = useState<string | null>(null);
-  const [selectedBook, setSelectedBook] = useState<string | null>(null);
-  const [manualFaultSide, setManualFaultSide] = useState<"BOOK" | "BANK">("BOOK");
+  const [drawerSource, setDrawerSource] = useState<TransactionDTO | null>(null);
   const [reopening, setReopening] = useState(false);
 
   // Suggested yang belum dikonfirmasi.
@@ -453,24 +451,10 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     }
   }
 
-  // Manual pair bar.
-  const selBank = data.unmatchedBank.find((t) => t.id === selectedBank);
-  const selBook = data.unmatchedBook.find((t) => t.id === selectedBook);
-  const manualDiff = selBank && selBook ? selBank.amount - selBook.amount : 0;
-
-  async function doManualPair() {
-    if (!selectedBank || !selectedBook) return;
-    try {
-      const updated = await api.manualPair(data.session.id, {
-        bankTxId: selectedBank, bookTxId: selectedBook,
-        ...(manualDiff !== 0 ? { discrepancyResolution: { faultSide: manualFaultSide } } : {}),
-      });
-      toast.success("Manual pair dibuat.");
-      setSelectedBank(null); setSelectedBook(null); onRefresh(updated);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal.");
-    }
-  }
+  // Drawer "Cari & Pasangkan" — sumber transaksi yang sedang dicocokkan.
+  const drawerTx = drawerSource
+    ? (drawerSource.source === "BANK" ? data.unmatchedBank : data.unmatchedBook).find((t) => t.id === drawerSource.id) ?? drawerSource
+    : null;
 
   const inboxZero = suggestedPending.length === 0
     && discrepancyPending.length === 0
@@ -592,10 +576,10 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
               </div>
             </div>
             {filteredRoutine.bank.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBank(tx.id)} selected={selectedBank === tx.id} />
+              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
             ))}
             {filteredRoutine.book.map((tx) => (
-              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setSelectedBook(tx.id)} selected={selectedBook === tx.id} />
+              <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
             ))}
           </div>
         )}
@@ -620,53 +604,15 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
         <BalanceMirror data={data} onGoReport={onGoReport} />
       </div>
 
-      {/* Modal manual pair */}
-      {/* Floating pill: 1 sisi terpilih */}
-      {((selectedBank && !selectedBook) || (!selectedBank && selectedBook)) && (
-        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full border border-teal-200 bg-white px-4 py-2 shadow-lg">
-          <span className="text-xs text-slate-700">
-            1 transaksi <b>{selectedBank ? "Bank" : "Buku"}</b> terpilih — pilih pasangan di sisi lawan
-          </span>
-          <button
-            onClick={() => { setSelectedBank(null); setSelectedBook(null); }}
-            className="rounded-full border border-slate-200 px-2.5 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
-          >
-            Batal
-          </button>
-        </div>
-      )}
-
-      {/* Modal manual pair: 2 sisi terpilih */}
-      {selectedBank && selectedBook && (
-        <div className="fixed bottom-6 left-1/2 z-40 w-[min(92vw,560px)] -translate-x-1/2 rounded-lg border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] shadow-lg">
-          <div className="mb-2 text-sm text-slate-700">2 transaksi terpilih. Pasangkan manual?</div>
-          {manualDiff !== 0 && (
-            <div className="mb-2 space-y-2">
-              <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
-                Nominal beda {formatIDR(manualDiff)}. Pilih sisi kesalahan:
-              </div>
-              <select
-                value={manualFaultSide}
-                onChange={(e) => setManualFaultSide(e.target.value as "BOOK" | "BANK")}
-                disabled={finalized}
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500 disabled:bg-slate-50"
-              >
-                <option value="BOOK">Kesalahan Buku (Buat Jurnal)</option>
-                <option value="BANK">Kesalahan Bank (Tanpa Jurnal)</option>
-              </select>
-            </div>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={doManualPair}
-              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
-            >Pasangkan Manual</button>
-            <button
-              onClick={() => { setSelectedBank(null); setSelectedBook(null); }}
-              className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600"
-            >Batal</button>
-          </div>
-        </div>
+      {/* Slide-Over Drawer: Cari & Pasangkan */}
+      {drawerTx && (
+        <ManualMatchDrawer
+          source={drawerTx}
+          data={data}
+          onRefresh={onRefresh}
+          onClose={() => setDrawerSource(null)}
+          onGoJournal={() => setDrawerSource(null)}
+        />
       )}
     </div>
   );
