@@ -37,6 +37,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
   const [query, setQuery] = useState("");
   const [sameDir, setSameDir] = useState(true);
   const [candidateId, setCandidateId] = useState<string | null>(null);
+  const [faultSide, setFaultSide] = useState<"BOOK" | "BANK">("BOOK");
   const [loading, setLoading] = useState(false);
 
   // Kandidat sisi lawan yang belum terselesaikan.
@@ -53,10 +54,11 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
     );
     const q = query.trim().toLowerCase();
     if (!q) return list;
+    const digits = q.replace(/\D/g, "");
     return list.filter(({ item }) =>
       item.description.toLowerCase().includes(q)
       || (item.reference || "").toLowerCase().includes(q)
-      || String(item.amount).includes(q.replace(/\D/g, "")),
+      || (digits.length > 0 && String(item.amount).includes(digits)),
     );
   }, [source, oppositeUnmatched, sameDir, query]);
 
@@ -72,6 +74,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
   }, [onClose]);
 
   const selected = ranked.find((r) => r.item.id === candidateId);
+  const oppositeDir = selected && selected.item.direction !== source.direction;
   const totalBank = source.source === "BANK" ? source.amount : (selected?.item.amount ?? 0);
   const totalBook = source.source === "BOOK" ? source.amount : (selected?.item.amount ?? 0);
   const diff = totalBank - totalBook;
@@ -83,10 +86,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
       const bankTxId = source.source === "BANK" ? source.id : candidateId;
       const bookTxId = source.source === "BOOK" ? source.id : candidateId;
       const body: Record<string, unknown> = { bankTxId, bookTxId };
-      if (diff !== 0) {
-        // Selisih: tanyakan sisi kesalahan via prompt ringan (default Buku).
-        body.discrepancyResolution = { faultSide: "BOOK" };
-      }
+      if (diff !== 0) body.discrepancyResolution = { faultSide };
       const updated = await api.manualPair(data.session.id, body);
       toast.success("Pasangan manual dibuat.");
       onRefresh(updated);
@@ -119,7 +119,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
               <div className="text-xs text-slate-500">{source.reference || "—"} · {formatDateID(source.date)}</div>
               <div className="mt-0.5 font-mono text-sm tabular-nums text-slate-900">{formatIDR(source.amount)}</div>
             </div>
-            <button onClick={onClose} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-teal-500">
+            <button type="button" onClick={onClose} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-teal-500">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -150,7 +150,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
               <p className="mt-1 text-xs text-slate-500">
                 Jika ini adalah biaya bank / bunga / transaksi belum tercatat, gunakan opsi Catat Jurnal Penyesuaian.
               </p>
-              <button onClick={onGoJournal} className="mt-3 inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700">
+              <button type="button" onClick={onGoJournal} className="mt-3 inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700">
                 <ArrowRightLeft className="h-3.5 w-3.5" /> Lihat Rekomendasi Auto-Jurnal
               </button>
             </div>
@@ -188,18 +188,35 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
             <span>Total Buku: <b className="font-mono tabular-nums text-slate-900">{formatIDR(totalBook)}</b></span>
             <span>Selisih: <b className={`font-mono tabular-nums ${diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b></span>
           </div>
+          {oppositeDir && (
+            <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-700">
+              ⚠ Kandidat berarah <b>berlawanan</b> dengan transaksi sumber. Pastikan ini memang transaksi yang tepat (mis. penyesuaian), bukan pasangan normal.
+            </div>
+          )}
           {diff !== 0 && selected && (
-            <div className="mt-1 text-[10px] text-amber-700">Selisih akan dicatat sebagai kesalahan Buku (jurnal penyesuaian).</div>
+            <div className="mt-2">
+              <label className="block text-[10px] text-slate-500">Sisi kesalahan atas selisih {formatIDR(diff)}:</label>
+              <select
+                value={faultSide}
+                onChange={(e) => setFaultSide(e.target.value as "BOOK" | "BANK")}
+                disabled={finalized}
+                className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500 disabled:bg-slate-50"
+              >
+                <option value="BOOK">Kesalahan Buku — Buat Jurnal Penyesuaian</option>
+                <option value="BANK">Kesalahan Bank — Tanpa Jurnal</option>
+              </select>
+            </div>
           )}
           <div className="mt-3 flex gap-2">
             <button
+              type="button"
               onClick={pair}
               disabled={finalized || !candidateId || loading}
               className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               {loading ? "Memproses…" : "Pasangkan Sekarang"}
             </button>
-            <button onClick={onClose} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400">
               Batal
             </button>
           </div>

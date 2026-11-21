@@ -42,6 +42,18 @@ describe("rankMatchCandidates", () => {
     const exactRank = ranked.findIndex((r) => r.item.id === "exact-same");
     expect(oppRank).toBeGreaterThan(exactRank);
   });
+
+  it("REGRESI: nominal terdekat menang meski kandidat lebih besar (monotonic amountDiff)", () => {
+    // Sumber Rp1.000.000. Kandidat Rp300.000 (selisih 700rb) WAJIB di atas
+    // Rp2.000.000 (selisih 1jt) — rumus rasio lama cacat (2jt dapat skor lebih tinggi).
+    const bigSrc = { amount: 1_000_000, direction: "IN" as const, date: "2026-11-15" };
+    const bigCandidates: RankCandidateTx[] = [
+      { id: "lower", amount: 300_000, direction: "IN", date: "2026-11-15", description: "Lebih kecil" },
+      { id: "higher", amount: 2_000_000, direction: "IN", date: "2026-11-15", description: "Lebih besar" },
+    ];
+    const ranked = rankMatchCandidates(bigSrc, bigCandidates);
+    expect(ranked[0].item.id).toBe("lower");
+  });
 });
 
 describe("daysBetween", () => {

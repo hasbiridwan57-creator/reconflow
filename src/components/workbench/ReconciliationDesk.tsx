@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api, type HydratedSessionResponse } from "@/lib/api/client";
 import { formatIDR, formatDateID, formatPercent } from "@/lib/format";
@@ -14,7 +14,7 @@ import { rankMatchCandidates, type RankCandidateTx } from "@/lib/engine/matchRan
 import { getAdjustmentImpactLabel } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2, Lock, Unlock, X, List, Columns2 } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Link2, Lock, Unlock, X, List, Columns2 } from "lucide-react";
 import { ConfirmedMatchesTab } from "@/components/workbench/WorkbenchComponents";
 import { ManualMatchDrawer } from "@/components/workbench/ManualMatchDrawer";
 
@@ -163,7 +163,7 @@ function SplitPairView({
   const selBank = bankItems.find((t) => t.id === selection.bankId) ?? null;
   const selBook = bookItems.find((t) => t.id === selection.bookId) ?? null;
 
-  // Rekomendasi kandidat terbaik utk sisi bank terpilih.
+  // Rekomendasi kandidat terbaik: klik BANK → sorot terbaik di BUKU, dan sebaliknya (2 arah).
   const highlightBookId = useMemo(() => {
     if (!selBank) return null;
     const ranked = rankMatchCandidates(
@@ -174,14 +174,25 @@ function SplitPairView({
     return ranked[0]?.item.id ?? null;
   }, [selBank, bookItems]);
 
+  const highlightBankId = useMemo(() => {
+    if (!selBook) return null;
+    const ranked = rankMatchCandidates(
+      { amount: selBook.amount, direction: selBook.direction as CashDirection, date: selBook.date },
+      bankItems as readonly RankCandidateTx[],
+      true,
+    );
+    return ranked[0]?.item.id ?? null;
+  }, [selBook, bankItems]);
+
   const diff = selBank && selBook ? selBank.amount - selBook.amount : 0;
+  const [faultSide, setFaultSide] = useState<"BOOK" | "BANK">("BOOK");
 
   async function pair() {
     if (!selBank || !selBook) return;
     setLoading(true);
     try {
       const body: Record<string, unknown> = { bankTxId: selBank.id, bookTxId: selBook.id };
-      if (diff !== 0) body.discrepancyResolution = { faultSide: "BOOK" };
+      if (diff !== 0) body.discrepancyResolution = { faultSide };
       const updated = await api.manualPair(data.session.id, body);
       toast.success("Pasangan manual dibuat.");
       setSelection({ bankId: null, bookId: null });
@@ -195,9 +206,10 @@ function SplitPairView({
 
   function MiniCard({ tx, side }: { tx: TransactionDTO; side: "BANK" | "BOOK" }) {
     const selected = side === "BANK" ? selection.bankId === tx.id : selection.bookId === tx.id;
-    const isHighlight = side === "BOOK" && highlightBookId === tx.id && !!selBank;
+    const isHighlight = side === "BOOK" ? (highlightBookId === tx.id && !!selBank) : (highlightBankId === tx.id && !!selBook);
     return (
       <button
+        type="button"
         onClick={() => setSelection((prev) => (side === "BANK" ? { ...prev, bankId: prev.bankId === tx.id ? null : tx.id } : { ...prev, bookId: prev.bookId === tx.id ? null : tx.id }))}
         disabled={finalized}
         className={`w-full rounded-lg border p-3 text-left transition focus-visible:ring-2 focus-visible:ring-teal-500 ${selected ? "border-teal-400 ring-2 ring-teal-500 bg-teal-50/40" : isHighlight ? "border-amber-300 bg-amber-50/40" : "border-slate-200 bg-white hover:border-slate-300"}`}
@@ -245,15 +257,26 @@ function SplitPairView({
             <span>Buku terpilih: <b className="font-mono tabular-nums text-slate-900">{formatIDR(selBook.amount)}</b></span>
             <span>Selisih: <b className={`font-mono tabular-nums ${diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b></span>
           </div>
+          {diff !== 0 && (
+            <select
+              value={faultSide}
+              onChange={(e) => setFaultSide(e.target.value as "BOOK" | "BANK")}
+              className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-teal-500"
+            >
+              <option value="BOOK">Kesalahan Buku — Jurnal</option>
+              <option value="BANK">Kesalahan Bank — Tanpa Jurnal</option>
+            </select>
+          )}
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={pair}
               disabled={loading}
               className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               {loading ? "Memproses…" : "Pasangkan"}
             </button>
-            <button onClick={() => setSelection({ bankId: null, bookId: null })} className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50">Batal</button>
+            <button type="button" onClick={() => setSelection({ bankId: null, bookId: null })} className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50">Batal</button>
           </div>
         </div>
       )}
@@ -315,7 +338,7 @@ function RoutineCard({
               disabled={finalized || loading}
               className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
-              ✓ Catat ke Buku · {getCategoryLabel(suggestion.category)}
+              ✓ Catat · {getCategoryLabel(suggestion.category)} ({suggestion.impactLabel})
             </button>
             <button onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-teal-600 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-teal-500">
               <Link2 className="h-3 w-3" /> Sudah ada di buku? Cari pasangan
@@ -461,6 +484,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   const s = data.summary;
   const [triage, setTriage] = useState<"ALL" | "BANK_ADJ" | "NEED_PAIR" | "BANK" | "BOOK">("ALL");
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+  const [batchLoading, setBatchLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "split">("list");
   const [splitSel, setSplitSel] = useState<{ bankId: string | null; bookId: string | null }>({ bankId: null, bookId: null });
   const [drawerSource, setDrawerSource] = useState<TransactionDTO | null>(null);
@@ -554,9 +578,23 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       list
         .map((tx) => ({ tx, sug: suggestAdjustmentCategory({ source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount }) }))
         .filter((it): it is { tx: TransactionDTO; sug: NonNullable<CategorySuggestion> } => it.sug !== null)
-        .map((it) => ({ transactionId: it.tx.id, category: it.sug.category, description: it.tx.description, amount: it.tx.amount, categoryLabel: getCategoryLabel(it.sug.category) }));
+        .map((it) => ({
+          transactionId: it.tx.id,
+          category: it.sug.category,
+          description: it.tx.description,
+          amount: it.tx.amount,
+          categoryLabel: getCategoryLabel(it.sug.category),
+          direction: it.tx.direction as CashDirection,
+          source: it.tx.source as "BANK" | "BOOK",
+        }));
     return [...collect(unmatchedRoutine.bank, "BANK"), ...collect(unmatchedRoutine.book, "BOOK")];
   }, [unmatchedRoutine]);
+
+  // Estimasi dampak neto bertanda: arah masuk (IN) menambah, keluar (OUT) mengurangi.
+  const bankAdjNetImpact = useMemo(
+    () => bankAdjItems.reduce((sum, it) => sum + (it.direction === "IN" ? it.amount : -it.amount), 0),
+    [bankAdjItems],
+  );
 
   const pendingUnfinished = unmatchedRoutine.bank.length + unmatchedRoutine.book.length;
 
@@ -619,6 +657,14 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     && unmatchedRoutine.bank.length === 0
     && unmatchedRoutine.book.length === 0
     && s.isBalanced;
+
+  // Esc menutup dialog konfirmasi batch.
+  useEffect(() => {
+    if (!showBatchConfirm) return;
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setShowBatchConfirm(false); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showBatchConfirm]);
 
   return (
     <div className={`grid grid-cols-1 gap-6 ${viewMode === "split" ? "xl:grid-cols-12" : "lg:grid-cols-12"}`}>
@@ -727,19 +773,10 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                   </button>
                 </div>
               </div>
-              {smartRoutineItems.length >= 2 && (
-                <button
-                  onClick={applyAllSmart}
-                  disabled={finalized}
-                  className="flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-100 disabled:opacity-60"
-                >
-                  <Sparkles className="h-3 w-3" /> Terapkan Semua Saran Cerdas ({smartRoutineItems.length})
-                </button>
-              )}
             </div>
 
-            {/* Triage tabs */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Triage tabs — disembunyikan di mode split (tak memfilter SplitPairView) */}
+            <div className={`flex flex-wrap items-center gap-2 ${viewMode === "split" ? "hidden lg:hidden" : ""}`}>
               {([
                 ["ALL", "Semua Belum Selesai", pendingUnfinished],
                 ["BANK_ADJ", "Penyesuaian Bank", bankAdjItems.length],
@@ -772,17 +809,31 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 </button>
               </div>
             )}
-            {viewMode === "split" ? (
-              <SplitPairView
-                bankItems={unmatchedRoutine.bank}
-                bookItems={unmatchedRoutine.book}
-                data={data}
-                onRefresh={onRefresh}
-                selection={splitSel}
-                setSelection={setSplitSel}
-                finalized={finalized}
-              />
-            ) : (
+            {viewMode === "split" && (
+              <>
+                {/* Di viewport <lg paksa tampilan list agar user tak terjebak mode split */}
+                <div className="lg:hidden">
+                  {filteredRoutine.bank.map((tx) => (
+                    <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
+                  ))}
+                  {filteredRoutine.book.map((tx) => (
+                    <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
+                  ))}
+                </div>
+                <div className="hidden lg:block">
+                  <SplitPairView
+                    bankItems={unmatchedRoutine.bank}
+                    bookItems={unmatchedRoutine.book}
+                    data={data}
+                    onRefresh={onRefresh}
+                    selection={splitSel}
+                    setSelection={setSplitSel}
+                    finalized={finalized}
+                  />
+                </div>
+              </>
+            )}
+            {viewMode === "list" && (
               <>
                 {filteredRoutine.bank.map((tx) => (
                   <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
@@ -833,25 +884,36 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
               {bankAdjItems.map((it) => (
                 <li key={it.transactionId + it.category} className="flex items-center justify-between gap-2 rounded border border-slate-100 px-3 py-2 text-xs">
                   <span className="min-w-0 flex-1 truncate text-slate-700">{it.description}</span>
+                  <span className="font-mono tabular-nums text-slate-600">{it.direction === "IN" ? "+" : "−"}{formatIDR(it.amount)}</span>
                   <span className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">{it.categoryLabel}</span>
                 </li>
               ))}
             </ul>
             <div className="mt-3 text-xs text-slate-500">
-              Estimasi dampak: total{" "}
-              <b className="font-mono tabular-nums text-slate-900">
-                {formatIDRAccountingShort(bankAdjItems.reduce((sum, it) => sum + (typeof it.amount === "number" ? it.amount : 0), 0))}
+              Estimasi dampak neto ke selisih rekonsiliasi:{" "}
+              <b className={`font-mono tabular-nums ${bankAdjNetImpact === 0 ? "text-slate-900" : bankAdjNetImpact > 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                {formatIDRAccountingShort(bankAdjNetImpact)}
               </b>{" "}
-              akan tercermin pada angka selisih rekonsiliasi.
+              (arah masuk ditambah, keluar dikurangi).
             </div>
             <div className="mt-4 flex gap-2">
               <button
-                onClick={async () => { setShowBatchConfirm(false); await applyAllSmart(); }}
-                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500"
+                type="button"
+                onClick={async () => {
+                  setBatchLoading(true);
+                  try {
+                    await applyAllSmart();
+                    setShowBatchConfirm(false);
+                  } finally {
+                    setBatchLoading(false);
+                  }
+                }}
+                disabled={finalized || batchLoading}
+                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
-                Ya, Terapkan Semua
+                {batchLoading ? "Memproses…" : "Ya, Terapkan Semua"}
               </button>
-              <button onClick={() => setShowBatchConfirm(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Batal</button>
+              <button type="button" onClick={() => setShowBatchConfirm(false)} disabled={batchLoading} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">Batal</button>
             </div>
           </div>
         </div>
@@ -864,7 +926,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
           data={data}
           onRefresh={onRefresh}
           onClose={() => setDrawerSource(null)}
-          onGoJournal={() => setDrawerSource(null)}
+          onGoJournal={() => { setDrawerSource(null); setTriage("BANK_ADJ"); setViewMode("list"); }}
         />
       )}
     </div>

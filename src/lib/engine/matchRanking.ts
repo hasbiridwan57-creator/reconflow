@@ -53,41 +53,38 @@ export function rankMatchCandidates<T extends RankCandidateTx>(
   candidates: readonly T[],
   sameDirectionOnly = true,
 ): RankedCandidate<T>[] {
-  const ranked: RankedCandidate<T>[] = [];
+  interface Aug { item: T; reason: string; same: boolean; exact: boolean; amountDiff: number; dayDiff: number }
+  const aug: Aug[] = [];
 
   for (const item of candidates) {
-    const sameDirection = item.direction === source.direction;
-    if (sameDirectionOnly && !sameDirection) continue;
+    const same = item.direction === source.direction;
+    if (sameDirectionOnly && !same) continue;
 
     const amountDiff = Math.abs(source.amount - item.amount);
-    const exactAmount = amountDiff === 0;
+    const exact = amountDiff === 0;
     const dayDiff = daysBetween(source.date, item.date);
-
-    // Skor: nominal dominan (maks 1000), jarak tanggal tie-breaker (maks 100).
-    let score = 0;
-    if (exactAmount) {
-      score = 1000;
-    } else {
-      const denom = Math.max(source.amount, item.amount, 1);
-      score = 500 * (1 - amountDiff / denom); // semakin dekat → mendekati 500
-    }
-    // Tie-breaker jarak tanggal (maks 100, decay).
-    score += 100 / (1 + dayDiff);
-    // Arah berbeda (hanya saat sameDirectionOnly=false) didiskon.
-    if (!sameDirection) score -= 2000;
 
     // Badge alasan.
     const parts: string[] = [];
-    if (exactAmount) parts.push("Nominal sama");
+    if (exact) parts.push("Nominal sama");
     else parts.push(`Selisih ${formatShortIDR(amountDiff)}`);
     if (dayDiff === 0) parts.push("Hari sama");
     else if (Number.isFinite(dayDiff)) parts.push(`Selisih ${dayDiff} hari`);
 
-    ranked.push({ item, score, reason: parts.join(" · ") });
+    aug.push({ item, reason: parts.join(" · "), same, exact, amountDiff, dayDiff });
   }
 
-  ranked.sort((a, b) => b.score - a.score);
-  return ranked;
+  // Urutan strictly monotonic:
+  // 1) arah sama > arah beda, 2) nominal persis > tidak, 3) amountDiff terkecil, 4) dayDiff terkecil.
+  aug.sort((a, b) => {
+    if (a.same !== b.same) return a.same ? -1 : 1;
+    if (a.exact !== b.exact) return a.exact ? -1 : 1;
+    if (a.amountDiff !== b.amountDiff) return a.amountDiff - b.amountDiff;
+    return a.dayDiff - b.dayDiff;
+  });
+
+  // Skor ordinal (lebih tinggi = lebih cocok) — konsumen tak wajib memakainya.
+  return aug.map((a, i) => ({ item: a.item, reason: a.reason, score: aug.length - i }));
 }
 
 /** Format ringkas Rp untuk badge alasan (tanpa dependensi format utama agar helper tetap pure). */
