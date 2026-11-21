@@ -17,6 +17,52 @@ import { LedgerExplorer } from "@/components/report/LedgerExplorer";
 import { Settings, X, FileText, FileSpreadsheet, CheckCircle2, ListChecks } from "lucide-react";
 import { formatIDR, formatPercent } from "@/lib/format";
 
+/** Shimmer skeleton menyerupai layout workspace: header + 6-KPI strip + 2 kolom. */
+function WorkspaceSkeleton() {
+  const block = "animate-pulse rounded bg-slate-200/80";
+  return (
+    <AppShell>
+      <div className="space-y-5" aria-busy="true" aria-label="Memuat sesi">
+        {/* Header */}
+        <div className="space-y-2">
+          <div className={`${block} h-7 w-1/3`} />
+          <div className={`${block} h-4 w-1/4`} />
+        </div>
+        {/* 6-Metric KPI Strip */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-slate-200/70 bg-white p-3">
+              <div className={`${block} h-3 w-2/3`} />
+              <div className={`${block} mt-2 h-5 w-1/2`} />
+            </div>
+          ))}
+        </div>
+        {/* 2 kolom: Meja Rekonsiliasi + Cermin Saldo */}
+        <div className="grid gap-4 lg:grid-cols-8">
+          <div className="space-y-3 lg:col-span-5">
+            <div className={`${block} h-5 w-1/4`} />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-lg border border-slate-200/70 bg-white p-4">
+                <div className={`${block} h-4 w-3/5`} />
+                <div className={`${block} mt-2 h-3 w-2/5`} />
+                <div className={`${block} mt-3 h-5 w-1/3`} />
+              </div>
+            ))}
+          </div>
+          <div className="lg:col-span-3">
+            <div className="rounded-lg border border-slate-200/70 bg-white p-4">
+              <div className={`${block} h-4 w-1/3`} />
+              <div className={`${block} mt-4 h-24 w-full`} />
+              <div className={`${block} mt-3 h-3 w-2/3`} />
+              <div className={`${block} mt-2 h-3 w-1/2`} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
 export default function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<HydratedSessionResponse | null>(null);
@@ -44,7 +90,7 @@ export default function WorkspacePage() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   if (error) return <AppShell><div className="text-sm text-rose-600">{error}</div></AppShell>;
-  if (!data) return <AppShell><div className="text-sm text-slate-500">Memuat sesi...</div></AppShell>;
+  if (!data) return <WorkspaceSkeleton />;
 
   const session = data.session;
   const s = data.summary;

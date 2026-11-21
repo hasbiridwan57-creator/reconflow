@@ -14,7 +14,7 @@ import { rankMatchCandidates, type RankCandidateTx } from "@/lib/engine/matchRan
 import { getAdjustmentImpactLabel, getAdjustmentSide, getSignedAmount } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Link2, Lock, Unlock, X, List, Columns2 } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Link2, Lock, Unlock, X, List, Columns2, Mail, Copy } from "lucide-react";
 import { ConfirmedMatchesTab } from "@/components/workbench/WorkbenchComponents";
 import { ManualMatchDrawer } from "@/components/workbench/ManualMatchDrawer";
 
@@ -212,7 +212,7 @@ function SplitPairView({
       <button
         type="button"
         onClick={() => setSelection((prev) => (side === "BANK" ? { ...prev, bankId: prev.bankId === tx.id ? null : tx.id } : { ...prev, bookId: prev.bookId === tx.id ? null : tx.id }))}
-        disabled={finalized}
+        disabled={finalized || loading}
         className={`w-full rounded-lg border p-3 text-left transition focus-visible:ring-2 focus-visible:ring-teal-500 ${selected ? "border-teal-400 ring-2 ring-teal-500 bg-teal-50/40" : isHighlight ? "border-amber-300 bg-amber-50/40" : "border-slate-200 bg-white hover:border-slate-300"}`}
       >
         <div className="flex items-center gap-1.5">
@@ -267,7 +267,8 @@ function SplitPairView({
             <select
               value={faultSide}
               onChange={(e) => setFaultSide(e.target.value as "BOOK" | "BANK")}
-              className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-teal-500"
+              disabled={finalized || loading}
+              className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-teal-500 disabled:opacity-50"
             >
               <option value="BOOK">Kesalahan Buku — Jurnal</option>
               <option value="BANK">Kesalahan Bank — Tanpa Jurnal</option>
@@ -277,7 +278,7 @@ function SplitPairView({
             <button
               type="button"
               onClick={pair}
-              disabled={loading || oppositeDir}
+              disabled={finalized || loading || oppositeDir}
               className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               {loading ? "Memproses…" : "Pasangkan"}
@@ -347,7 +348,7 @@ function RoutineCard({
               ✓ Catat · {getCategoryLabel(suggestion.category)} ({suggestion.impactLabel})
             </button>
             <button type="button" onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-teal-600 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-teal-500">
-              <Link2 className="h-3 w-3" /> Sudah ada di buku? Cari pasangan
+              <Link2 className="h-3 w-3" /> {side === "BANK" ? "Sudah ada di buku? Cari pasangan" : "Sudah ada di bank? Cari pasangan"}
             </button>
           </>
         ) : (
@@ -548,16 +549,6 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     return { bank: find(data.unmatchedBank, "BANK"), book: find(data.unmatchedBook, "BOOK") };
   }, [data, adjTxIds, matchedBankTxs]);
 
-  // Item rutin cerdas (sug tersedia, bukan anomali) — dipakai tombol bulk.
-  const smartRoutineItems = useMemo(() => {
-    const collect = (list: TransactionDTO[], source: "BANK" | "BOOK") =>
-      list
-        .map((tx) => ({ tx, sug: suggestAdjustmentCategory({ source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount }) }))
-        .filter((it): it is { tx: TransactionDTO; sug: NonNullable<CategorySuggestion> } => it.sug !== null && !it.sug.isAnomaly)
-        .map((it) => ({ transactionId: it.tx.id, category: it.sug.category, description: it.tx.description }));
-    return [...collect(unmatchedRoutine.bank, "BANK"), ...collect(unmatchedRoutine.book, "BOOK")];
-  }, [unmatchedRoutine]);
-
   // Filter seksi rutin berdasarkan tab triage.
   const filteredRoutine = {
     bank: unmatchedRoutine.bank.filter((tx) => {
@@ -636,17 +627,19 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
 
   async function applyAllSmart() {
     if (finalized) { toast.error("Sesi sudah FINALIZED."); return; }
-    const items = smartRoutineItems;
+    const items = bankAdjItems.map((it) => ({ transactionId: it.transactionId, category: it.category, description: it.description }));
     if (items.length === 0) {
-      toast.info("Tidak ada saran cerdas untuk diterapkan.");
-      return;
+      toast.info("Tidak ada rekomendasi penyesuaian untuk diterapkan.");
+      return false;
     }
     try {
       const updated = await api.createBulkAdjustments(data.session.id, items);
       toast.success(`${items.length} penyesuaian diterapkan.`);
       onRefresh(updated);
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
+      return false;
     }
   }
 
@@ -841,6 +834,9 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                   {filteredRoutine.book.map((tx) => (
                     <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
                   ))}
+                  {filteredRoutine.bank.length === 0 && filteredRoutine.book.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">Tidak ada transaksi pada filter ini.</div>
+                  )}
                 </div>
                 <div className="hidden lg:block">
                   <SplitPairView
@@ -863,6 +859,9 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 {filteredRoutine.book.map((tx) => (
                   <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
                 ))}
+                {filteredRoutine.bank.length === 0 && filteredRoutine.book.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">Tidak ada transaksi pada filter ini.</div>
+                )}
               </>
             )}
           </div>
@@ -902,7 +901,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 <p className="mt-0.5 text-xs text-slate-500">
                   {mixedBatch
                     ? "Penyesuaian Sisi Buku akan membentuk jurnal otomatis; penyesuaian Sisi Bank (timing difference) dicatat tanpa jurnal."
-                    : allBankSide
+                    : allBookSide
                       ? "Item berikut akan dicatat ke Sisi Buku sebagai jurnal penyesuaian otomatis."
                       : "Item berikut akan dicatat sebagai penyesuaian Sisi Bank (tanpa jurnal)."}
                 </p>
@@ -913,7 +912,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
               {bankAdjItems.map((it) => (
                 <li key={it.transactionId + it.category} className="flex items-center justify-between gap-2 rounded border border-slate-100 px-3 py-2 text-xs">
                   <span className="min-w-0 flex-1 truncate text-slate-700">{it.description}</span>
-                  <span className="font-mono tabular-nums text-slate-600">{it.direction === "IN" ? "+" : "−"}{formatIDR(it.amount)}</span>
+                  <span className="font-mono tabular-nums text-slate-600">{formatIDRAccountingShort(getSignedAmount(it.category, it.amount))}</span>
                   <span className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">{it.categoryLabel}</span>
                 </li>
               ))}
@@ -931,8 +930,8 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 onClick={async () => {
                   setBatchLoading(true);
                   try {
-                    await applyAllSmart();
-                    setShowBatchConfirm(false);
+                    const ok = await applyAllSmart();
+                    if (ok) setShowBatchConfirm(false);
                   } finally {
                     setBatchLoading(false);
                   }
@@ -973,7 +972,41 @@ function AnomalyTxCard({
 }) {
   const finalized = data.session.status === "FINALIZED";
   const [loading, setLoading] = useState(false);
+  const [showClaim, setShowClaim] = useState(false);
   const side = tx.source;
+
+  // Template draft email sengketa — terisi deterministik dari data sesi & transaksi.
+  const claimSubject = `Sengketa Transaksi ${tx.reference || tx.description} — ${formatIDR(tx.amount)}`;
+  const claimBody = [
+    `Kepada Yth. ${data.session.bankAccountName},`,
+    "",
+    `Perihal: Sengketa transaksi pada rekening ${data.session.bankAccountName} atas nama ${data.session.companyName}, periode ${data.session.periodLabel}.`,
+    "",
+    `Dengan ini kami menyampaikan sengketa atas transaksi berikut yang tercatat pada rekening koran kami:`,
+    `• Tanggal        : ${formatDateID(tx.date)}`,
+    `• No. Referensi  : ${tx.reference || "—"}`,
+    `• Keterangan     : ${tx.description}`,
+    `• Arah           : ${tx.direction === "IN" ? "Masuk" : "Keluar"}`,
+    `• Nominal        : ${formatIDR(tx.amount)}`,
+    "",
+    `Identifikasi internal kami: ${suggestion.reason}.`,
+    `Kami memohon penelusuran, klarifikasi, dan pengembalian dana apabila transaksi tersebut terbukti tidak sah atau keliru.`,
+    "",
+    `Besar harapan kami mendapat tanggapan resmi dari pihak Bapak/Ibu. Apabila terdapat informasi tambahan yang diperlukan, silakan menghubungi kami melalui kontak resmi perusahaan.`,
+    "",
+    `Hormat kami,`,
+    `${data.session.preparedBy} — ${data.session.companyName}`,
+  ].join("\n");
+  const [claimText, setClaimText] = useState(claimBody);
+
+  async function copyClaim() {
+    try {
+      await navigator.clipboard.writeText(`Subjek: ${claimSubject}\n\n${claimText}`);
+      toast.success("Draft klaim disalin ke clipboard.");
+    } catch {
+      toast.error("Gagal menyalin. Salin manual dari kotak teks.");
+    }
+  }
 
   async function classify(category: AdjustmentCategory) {
     setLoading(true);
@@ -1020,6 +1053,12 @@ function AnomalyTxCard({
         >
           ✓ {getCategoryLabel(suggestion.category)} · {suggestion.impactLabel}
         </button>
+        <button type="button"
+          onClick={() => { setClaimText(claimBody); setShowClaim(true); }}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-500"
+        >
+          <Mail className="h-3.5 w-3.5" /> Buat Draft Klaim Bank
+        </button>
         <select
           defaultValue=""
           onChange={(e) => e.target.value && classify(e.target.value as AdjustmentCategory)}
@@ -1034,6 +1073,34 @@ function AnomalyTxCard({
           ))}
         </select>
       </div>
+      {showClaim && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Draft klaim bank">
+          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setShowClaim(false)} />
+          <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white p-5 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900">Draft Email Klaim Bank</h4>
+                <p className="mt-0.5 text-xs text-slate-500">Sunting bila perlu, lalu salin &amp; kirim ke bank Anda.</p>
+              </div>
+              <button type="button" onClick={() => setShowClaim(false)} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">Subjek</span>
+              <input value={claimSubject} readOnly className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none" />
+            </label>
+            <label className="mt-3 block flex-1">
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-500">Isi Email</span>
+              <textarea value={claimText} onChange={(e) => setClaimText(e.target.value)} rows={16} className="h-full min-h-[280px] w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm leading-relaxed text-slate-700 outline-none focus:border-teal-500" />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowClaim(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400">Tutup</button>
+              <button type="button" onClick={copyClaim} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500">
+                <Copy className="h-4 w-4" /> Salin Draft
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1061,14 +1128,14 @@ function SuggestedCardList({ data, onRefresh, suggestedPending }: { data: Hydrat
       {suggestedPending.map((m) => (
         <div key={m.id} className="rounded-lg border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-lg bg-sky-50/50 p-3">
-              <div className="text-[10px] font-medium uppercase tracking-wide text-sky-600">Data Bank</div>
+            <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-sky-700">Data Bank</div>
               <div className="mt-1 text-sm font-medium text-slate-900">{m.bankTx.description}</div>
               <div className="text-xs text-slate-500">{m.bankTx.reference} · {formatDateID(m.bankTx.date)}</div>
               <div className="mt-1 font-mono text-sm tabular-nums text-right text-slate-900">{formatIDR(m.bankTx.amount)}</div>
             </div>
-            <div className="rounded-lg bg-violet-50/50 p-3">
-              <div className="text-[10px] font-medium uppercase tracking-wide text-violet-600">Data Buku</div>
+            <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-violet-700">Data Buku</div>
               <div className="mt-1 text-sm font-medium text-slate-900">{m.bookTx.description}</div>
               <div className="text-xs text-slate-500">{m.bookTx.reference} · {formatDateID(m.bookTx.date)}</div>
               <div className="mt-1 font-mono text-sm tabular-nums text-right text-slate-900">{formatIDR(m.bookTx.amount)}</div>

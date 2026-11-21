@@ -171,3 +171,24 @@
 - [x] Banner Demo Audit Brief di `/workspace/[id]`.
 - [x] UX `/new`: `periodEndDate` type=date + auto-isi dari tanggal terbaru; saldo akhir update otomatis saat ubah mapping balance.
 - [x] Gate hijau: tsc / lint / test / build.
+
+## Putaran Autonomous End-to-End — Zero Logic Flaws & Executive Polish (2026-11-21)
+### Bagian A — Penutupan Cacat Logika
+- [x] Fix dialog batch terbalik (allBankSide kini "Sisi Bank / tanpa jurnal", allBookSide kini "ke Sisi Buku sebagai jurnal") + zero-drift tanda pakai `getSignedAmount(category, amount)` di daftar item + `applyAllSmart` kini mengembalikan boolean (dialog tutup hanya saat sukses) + hapus duplikat `smartRoutineItems` (bankAdjItems = single source of truth).
+- [x] Copy `RoutineCard` adaptif sisi (`"Sudah ada di buku?"` vs `"Sudah ada di bank?"`).
+- [x] `SplitPairView`: `MiniCard` + `<select>` guard `loading`, tombol `Pasangkan` tambah `finalized`, empty state triage menampilkan "Tidak ada transaksi pada filter ini."
+- [x] `ManualMatchDrawer`: render `<select>` faultSide hanya saat `selected && !oppositeDir` + disabled `finalized || loading`; pill arah (Masuk/Keluar) di tiap baris kandidat; empty state netral ("gunakan opsi Catat Penyesuaian").
+- [x] Backend `POST /adjustments`: sertakan `bankMatch: true, bookMatch: true` + tolak HTTP 409 bila `tx.adjustment || tx.bankMatch || tx.bookMatch` (anti double-counting).
+- [x] Backend `PATCH /adjustments/[adjId]`: kategori pindah sisi BANK↔BOOK set `contraAccountName` benar (null untuk BANK, COA default untuk BOOK).
+- [x] Backend `DELETE /adjustments/[adjId]`: tolak HTTP 409 bila `matchPairId !== null` (anti orphan DISCREPANCY_MATCH).
+- [x] Backend `POST /matches/manual`: description & `contraAccountName` fallback `bookTx.counterAccount || defaultContraAccount(category)` — konsisten dengan PATCH `/matches/[matchId]`.
+- [x] Buat `src/lib/engine/spreadsheet.ts` (`parseXlsx` via exceljs, cell Date → ISO, formula/richText/angka → string bersih, posisi kolom tetap) + dukung `.xlsx` di dropzone `/new`.
+- [x] Fix bug tanggal: `latestDate` dihitung setelah `parseFlexibleDate` per baris (DD/MM/YYYY akurat); saring baris kotor/footer (tanpa tanggal valid ATAU amount ≤ 0) + toast; validasi form lengkap (company, bank, period, date, min 1 tx bank & buku).
+- [x] Ekspor Excel: `adjMap` category → kolom status menampilkan "Penyesuaian: …" / label match / "Belum Cocok" + `width: 28`.
+### Bagian B — Executive Polish
+- [x] 1-klik "Buat Draft Klaim Bank" pada `AnomalyTxCard` — modal template email sengketa formal (subjek, isi editable, tombol Salin Draft) dari data sesi & transaksi.
+- [x] PDF executive-grade: top accent bar 3mm Deep Teal, stempel status (RECONCILED/DRAFT), 4 kotak KPI ringkasan (bank/buku/kas benar/selisih).
+- [x] Shimmer skeleton di `WorkspacePage` menyerupai layout (header + 6-KPI strip + 2 kolom); redam pastel `SuggestedCardList`; title pada item Rekening Aktif `AppShell`.
+### Bagian C — Test & Gate
+- [x] Test baru: `match-ranking.test.ts` (invalid dates), `engine.spreadsheet.test.ts` (ExcelJS buffer), `export.status.test.ts` (Excel status kolom, PDF balanced & draft).
+- [x] Gate hijau: `prisma validate` ✓ · `prisma generate` ✓ · tsc 0 · lint 0 · **121 pass + 1 skip** · build 0.

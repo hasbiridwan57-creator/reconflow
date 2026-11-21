@@ -26,9 +26,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     let amount = customAmount;
     if (transactionId) {
-      const tx = await prisma.transaction.findUnique({ where: { id: transactionId }, include: { adjustment: true } });
+      const tx = await prisma.transaction.findUnique({ where: { id: transactionId }, include: { adjustment: true, bankMatch: true, bookMatch: true } });
       if (!tx || tx.sessionId !== id) return notFoundResponse("Transaksi");
-      if (tx.adjustment) return failure("CONFLICT", "Transaksi sudah diklasifikasi.", 409);
+      if (tx.adjustment || tx.bankMatch || tx.bookMatch) {
+        return failure("CONFLICT", "Transaksi sudah termatch atau sudah diklasifikasi.", 409);
+      }
       if (!customAmount) amount = tx.amount;
     }
 

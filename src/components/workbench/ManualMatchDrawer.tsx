@@ -151,10 +151,10 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
               <div className="text-sm font-medium text-slate-700">Tidak ditemukan transaksi pasangan di sisi {opposite}.</div>
               <p className="mt-1 text-xs text-slate-500">
-                Jika ini adalah biaya bank / bunga / transaksi belum tercatat, gunakan opsi Catat Jurnal Penyesuaian.
+                Jika ini adalah biaya bank / bunga / transaksi belum tercatat, gunakan opsi Catat Penyesuaian.
               </p>
               <button type="button" onClick={onGoJournal} className="mt-3 inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700">
-                <ArrowRightLeft className="h-3.5 w-3.5" /> Lihat Rekomendasi Auto-Jurnal
+                <ArrowRightLeft className="h-3.5 w-3.5" /> Lihat Rekomendasi Otomatis
               </button>
             </div>
           ) : (
@@ -170,7 +170,12 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
                       className="text-teal-600 focus:ring-teal-500"
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-slate-900">{item.description}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium text-slate-900">{item.description}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${item.direction === "IN" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
+                          {item.direction === "IN" ? "Masuk" : "Keluar"}
+                        </span>
+                      </div>
                       <div className="text-xs text-slate-500">{item.reference || "—"} · {formatDateID(item.date)}</div>
                     </div>
                     <div className="text-right">
@@ -196,13 +201,13 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
               Tidak dapat dipasangkan: arah arus kas berlawanan (Masuk vs Keluar). Pilih kandidat berarah sama.
             </div>
           )}
-          {diff !== 0 && selected && (
+          {diff !== 0 && selected && !oppositeDir && (
             <div className="mt-2">
               <label className="block text-[10px] text-slate-500">Sisi kesalahan atas selisih {formatIDR(diff)}:</label>
               <select
                 value={faultSide}
                 onChange={(e) => setFaultSide(e.target.value as "BOOK" | "BANK")}
-                disabled={finalized}
+                disabled={finalized || loading}
                 className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-teal-500 disabled:bg-slate-50"
               >
                 <option value="BOOK">Kesalahan Buku — Buat Jurnal Penyesuaian</option>

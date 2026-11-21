@@ -195,6 +195,7 @@ function SidebarContent({
                 key={s.id}
                 href={`/workspace/${s.id}`}
                 onClick={onNavigate}
+                title={`${s.companyName} — ${s.bankAccountName} (${s.periodLabel})`}
                 className={`mb-0.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors ${
                   active
                     ? "bg-teal-50 text-teal-900 ring-1 ring-inset ring-teal-200"

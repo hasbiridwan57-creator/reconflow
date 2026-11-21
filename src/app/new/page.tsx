@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { api } from "@/lib/api/client";
 import { parseIndonesianCurrency, parseFlexibleDate, COLUMN_ALIASES, type ColumnRole } from "@/lib/engine/parser";
+import { parseXlsx } from "@/lib/engine/spreadsheet";
 import { Upload, FileDown, ChevronDown, ChevronRight } from "lucide-react";
 
 interface ParsedFile {
@@ -19,6 +20,19 @@ interface ParsedFile {
   rows: Record<string, string>[];
   headers: string[];
   mapping: Record<ColumnRole, string | null>;
+}
+
+/** Baris transaksi hasil buildTransactions — tipe sama dgn createSession input. */
+interface TxRow {
+  source: "BANK" | "BOOK";
+  rowIndex: number;
+  date: string;
+  reference: string;
+  description: string;
+  direction: "IN" | "OUT";
+  amount: number;
+  runningBalance: number;
+  counterAccount: string | null;
 }
 
 const BANK_TEMPLATE = "tanggal,no_referensi,keterangan,debit_keluar,kredit_masuk,saldo\n2026-10-02,BNK-001,\"Keterangan\",0,1000000,1000000\n";
@@ -69,8 +83,8 @@ function Dropzone({ label, parsed, onFile, template, templateName }: {
       </div>
       <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 py-8 transition hover:border-teal-400 hover:bg-slate-50">
         <Upload className="mb-2 h-6 w-6 text-slate-400" />
-        <span className="text-sm text-slate-600">{parsed ? parsed.fileName : "Klik atau tarik file .csv di sini"}</span>
-        <input type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+        <span className="text-sm text-slate-600">{parsed ? parsed.fileName : "Klik atau tarik file .csv atau .xlsx di sini"}</span>
+        <input type="file" accept=".csv,.xlsx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
       </label>
       {parsed && (
         <div className="mt-3 space-y-1 text-xs">
@@ -106,32 +120,45 @@ export default function NewSessionPage() {
   const [mapperOpen, setMapperOpen] = useState<boolean | null>(null);
   const mapperIsOpen = mapperOpen ?? mapperAutoOpen;
 
-  function handleFile(file: File, source: "BANK" | "BOOK") {
-    Papa.parse<Record<string, string>>(file, {
-      header: true, skipEmptyLines: true, complete: (result) => {
-        const parsed: ParsedFile = {
-          fileName: file.name,
-          rows: result.data,
-          headers: result.meta.fields ?? [],
-          mapping: autoMap(result.meta.fields ?? []),
-        };
-        if (source === "BANK") setBank(parsed); else setBook(parsed);
+  async function processData(file: File, source: "BANK" | "BOOK", rows: Record<string, string>[], headers: string[]) {
+    const mapping = autoMap(headers);
+    const parsed: ParsedFile = { fileName: file.name, rows, headers, mapping };
+    if (source === "BANK") setBank(parsed); else setBook(parsed);
 
-        const last = result.data[result.data.length - 1];
-        const saldoKey = parsed.mapping.balance;
-        const dateKey = parsed.mapping.date;
-        const latestDate = dateKey
-          ? result.data.reduce<string>((max, row) => {
-              const d = row[dateKey] ?? "";
-              return d > max ? d : max;
-            }, "")
-          : "";
-        setMeta((m) => ({
-          ...m,
-          ...(source === "BANK" ? { endingBankBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBankBalance }
-                                : { endingBookBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBookBalance }),
-          ...(latestDate && !m.periodEndDate ? { periodEndDate: latestDate } : {}),
-        }));
+    const saldoKey = mapping.balance;
+    const dateKey = mapping.date;
+    // Parse tiap tanggal dulu (fix bug: string ISO vs DD/MM/YYYY tak sebanding leksikografis).
+    const latestDate = dateKey
+      ? rows.reduce<string>((max, row) => {
+          const iso = parseFlexibleDate(row[dateKey] ?? "") ?? "";
+          return iso > max ? iso : max;
+        }, "")
+      : "";
+    const last = rows[rows.length - 1];
+    setMeta((m) => ({
+      ...m,
+      ...(source === "BANK"
+        ? { endingBankBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBankBalance }
+        : { endingBookBalance: last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey])) : m.endingBookBalance }),
+      ...(latestDate && !m.periodEndDate ? { periodEndDate: latestDate } : {}),
+    }));
+  }
+
+  async function handleFile(file: File, source: "BANK" | "BOOK") {
+    if (file.name.toLowerCase().endsWith(".xlsx")) {
+      try {
+        const buf = await file.arrayBuffer();
+        const { headers, rows } = await parseXlsx(buf);
+        if (headers.length === 0) { toast.error("File .xlsx kosong atau tidak terbaca."); return; }
+        await processData(file, source, rows, headers);
+      } catch (e) {
+        toast.error(e instanceof Error ? `Gagal membaca .xlsx: ${e.message}` : "Gagal membaca .xlsx.");
+      }
+      return;
+    }
+    Papa.parse<Record<string, string>>(file, {
+      header: true, skipEmptyLines: true, complete: async (result) => {
+        await processData(file, source, result.data, result.meta.fields ?? []);
       },
     });
   }
@@ -151,7 +178,9 @@ export default function NewSessionPage() {
   function buildTransactions(parsed: ParsedFile, source: "BANK" | "BOOK") {
     if (!parsed) return [];
     const m = parsed.mapping;
-    return parsed.rows.map((row, i) => {
+    const cleaned: TxRow[] = [];
+    let skipped = 0;
+    parsed.rows.forEach((row, i) => {
       const date = parseFlexibleDate(m.date ? row[m.date] : "") ?? "";
       const reference = m.reference ? row[m.reference] : "";
       const description = m.description ? row[m.description] : "(tanpa keterangan)";
@@ -161,19 +190,36 @@ export default function NewSessionPage() {
       const counterAccount = m.counterAccount ? row[m.counterAccount] || null : null;
       const direction = source === "BANK" ? (kredit > 0 ? "IN" : "OUT") : (debit > 0 ? "IN" : "OUT");
       const amount = Math.abs(debit) > 0 ? Math.abs(debit) : Math.abs(kredit);
-      return { source, rowIndex: i, date, reference, description, direction, amount, runningBalance: Math.abs(saldo), counterAccount: source === "BOOK" ? counterAccount : null };
+      // Saring baris kotor/footer (mis. "TOTAL"): tanpa tanggal valid ATAU amount ≤ 0.
+      if (!date || amount <= 0) { skipped += 1; return; }
+      cleaned.push({ source, rowIndex: i, date, reference, description, direction, amount, runningBalance: Math.abs(saldo), counterAccount: source === "BOOK" ? counterAccount : null });
     });
+    if (skipped > 0) {
+      toast.info(`${skipped} baris dilewati (tanpa tanggal valid atau nominal 0) — kemungkinan baris footer/jumlah.`);
+    }
+    return cleaned;
   }
 
   async function handleSubmit() {
-    if (!bank || !book) { toast.error("Upload kedua file CSV terlebih dahulu."); return; }
-    if (!meta.companyName || !meta.periodLabel) { toast.error("Isi Nama Perusahaan & Periode."); return; }
+    if (!bank || !book) { toast.error("Upload kedua file (.csv / .xlsx) terlebih dahulu."); return; }
+    const missing: string[] = [];
+    if (!meta.companyName) missing.push("Nama Perusahaan");
+    if (!meta.bankAccountName) missing.push("Nama Rekening Bank");
+    if (!meta.periodLabel) missing.push("Periode");
+    if (!meta.periodEndDate) missing.push("Tanggal Akhir Periode");
+    if (missing.length > 0) { toast.error(`Lengkapi metadata: ${missing.join(", ")}.`); return; }
+
+    const bankTxs = buildTransactions(bank, "BANK");
+    const bookTxs = buildTransactions(book, "BOOK");
+    if (bankTxs.length === 0) { toast.error("Tidak ada transaksi Bank valid (periksa tanggal & nominal)."); return; }
+    if (bookTxs.length === 0) { toast.error("Tidak ada transaksi Buku valid (periksa tanggal & nominal)."); return; }
+
     setSubmitting(true);
     try {
       const { id } = await api.createSession({
         ...meta,
-        bankTransactions: buildTransactions(bank, "BANK"),
-        bookTransactions: buildTransactions(book, "BOOK"),
+        bankTransactions: bankTxs,
+        bookTransactions: bookTxs,
       });
       toast.success("Sesi dibuat, auto-match dijalankan.");
       router.push(`/workspace/${id}`);

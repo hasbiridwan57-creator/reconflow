@@ -62,4 +62,38 @@ describe("daysBetween", () => {
     expect(daysBetween("2026-11-15", "2026-11-16")).toBe(1);
     expect(daysBetween("2026-11-15", "2026-11-15")).toBe(0);
   });
+
+  it("mengembalikan Infinity saat tanggal invalid (tidak NaN)", () => {
+    expect(daysBetween("bukan-tanggal", "2026-11-15")).toBe(Number.POSITIVE_INFINITY);
+    expect(daysBetween("2026-11-15", "")).toBe(Number.POSITIVE_INFINITY);
+    expect(daysBetween("", "")).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+describe("rankMatchCandidates dengan tanggal invalid", () => {
+  it("deterministik tanpa NaN: tanggal valid lebih diutamakan daripada invalid", () => {
+    const srcInvalid = { amount: 500_000, direction: "IN" as const, date: "not-a-date" };
+    const cands: RankCandidateTx[] = [
+      { id: "valid-date", amount: 500_000, direction: "IN", date: "2026-11-15", description: "Tanggal valid" },
+      { id: "invalid-date", amount: 500_000, direction: "IN", date: "bogus", description: "Tanggal invalid" },
+    ];
+    const ranked = rankMatchCandidates(srcInvalid, cands);
+    // Keduanya Infinity dayDiff → tie; pastikan skor numerik (bukan NaN) & deterministik.
+    expect(ranked).toHaveLength(2);
+    expect(ranked[0].score).not.toBeNaN();
+    expect(ranked[1].score).not.toBeNaN();
+    // Uji dua kali — urutan tetap (deterministik).
+    const ranked2 = rankMatchCandidates(srcInvalid, cands);
+    expect(ranked2.map((r) => r.item.id)).toEqual(ranked.map((r) => r.item.id));
+  });
+
+  it("reason tidak memuat NaN untuk tanggal invalid", () => {
+    const srcValid = { amount: 500_000, direction: "IN" as const, date: "2026-11-15" };
+    const cands: RankCandidateTx[] = [
+      { id: "bad-date", amount: 490_000, direction: "IN", date: "nope", description: "Tanggal rusak" },
+    ];
+    const ranked = rankMatchCandidates(srcValid, cands);
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0].reason).not.toMatch(/NaN/i);
+  });
 });

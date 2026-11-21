@@ -61,6 +61,25 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
   matchRateRow.getCell("value").numFmt = "0.0%";
   styleHeader(ws1);
 
+  // Peta id penyesuaian → label kategori (untuk kolom status yang informatif).
+  const adjMap = new Map(session.adjustments.map((a) => [a.id, a.category]));
+
+  /** Label status kolom "Status" untuk tiap transaksi. */
+  function statusLabel(t: { adjustmentId: string | null; matchStatus: string | null }): string {
+    if (t.adjustmentId) {
+      const cat = adjMap.get(t.adjustmentId);
+      return cat ? `Penyesuaian: ${getCategoryLabel(cat)}` : "Penyesuaian";
+    }
+    if (t.matchStatus) {
+      const ms = t.matchStatus;
+      if (ms === "EXACT_MATCH") return "Cocok Persis";
+      if (ms === "SUGGESTED_MATCH") return "Saran";
+      if (ms === "MANUAL_MATCH") return "Manual";
+      return ms;
+    }
+    return "Belum Cocok";
+  }
+
   // ---- Sheet 2: Transaksi Bank ----
   const ws2 = wb.addWorksheet("Transaksi Bank");
   ws2.columns = [
@@ -69,10 +88,10 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
     { header: "Keterangan", key: "desc", width: 42 },
     { header: "Arah", key: "dir", width: 8 },
     { header: "Nominal", key: "amount", width: 18 },
-    { header: "Status", key: "status", width: 18 },
+    { header: "Status", key: "status", width: 28 },
   ];
   session.bankTransactions.forEach((t) => {
-    ws2.addRow({ date: t.date, ref: t.reference, desc: t.description, dir: t.direction, amount: t.amount, status: t.matchStatus ?? "UNMATCHED" });
+    ws2.addRow({ date: t.date, ref: t.reference, desc: t.description, dir: t.direction, amount: t.amount, status: statusLabel(t) });
   });
   ws2.getColumn("amount").numFmt = "#,##0";
   styleHeader(ws2);
@@ -85,10 +104,10 @@ export async function generateExcel(session: HydratedSessionResponse): Promise<B
     { header: "Keterangan", key: "desc", width: 42 },
     { header: "Arah", key: "dir", width: 8 },
     { header: "Nominal", key: "amount", width: 18 },
-    { header: "Status", key: "status", width: 18 },
+    { header: "Status", key: "status", width: 28 },
   ];
   session.bookTransactions.forEach((t) => {
-    ws3.addRow({ date: t.date, ref: t.reference, desc: t.description, dir: t.direction, amount: t.amount, status: t.matchStatus ?? "UNMATCHED" });
+    ws3.addRow({ date: t.date, ref: t.reference, desc: t.description, dir: t.direction, amount: t.amount, status: statusLabel(t) });
   });
   ws3.getColumn("amount").numFmt = "#,##0";
   styleHeader(ws3);

@@ -2,6 +2,7 @@ import { db as prisma } from "@/lib/db";
 import { success, failure, handleError } from "@/lib/api";
 import { ManualPairSchema } from "@/lib/schemas/reconciliation";
 import { resolveDiscrepancyAdjustment } from "@/lib/engine/discrepancy";
+import { defaultContraAccount } from "@/lib/engine/adjustments";
 import type { CashDirection } from "@/lib/schemas/reconciliation";
 import { dateDiffDays } from "@/lib/engine/parser";
 import { finalizeMutationResponse, requireEditableSession, notFoundResponse } from "@/lib/session";
@@ -76,8 +77,8 @@ export async function POST(
             side: faultSide,
             category,
             signedAmount,
-            description: discrepancyResolution.description ?? "Koreksi selisih manual match",
-            contraAccountName: discrepancyResolution.contraAccountName ?? null,
+            description: discrepancyResolution.description || `Koreksi selisih: ${bookTx.description}`,
+            contraAccountName: discrepancyResolution.contraAccountName || (faultSide === "BOOK" ? (bookTx.counterAccount || defaultContraAccount(category)) : null),
             auditNote: auditNote ?? null,
           },
         });
