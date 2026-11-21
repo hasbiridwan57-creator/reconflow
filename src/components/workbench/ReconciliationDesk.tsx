@@ -11,7 +11,7 @@ import { formatIDR, formatDateID, formatPercent } from "@/lib/format";
 import { getCategoryLabel } from "@/lib/engine/calculator";
 import { suggestAdjustmentCategory, type CategorySuggestion } from "@/lib/engine/suggester";
 import { rankMatchCandidates, type RankCandidateTx } from "@/lib/engine/matchRanking";
-import { getAdjustmentImpactLabel } from "@/lib/engine/adjustments";
+import { getAdjustmentImpactLabel, getAdjustmentSide, getSignedAmount } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
 import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Link2, Lock, Unlock, X, List, Columns2 } from "lucide-react";
@@ -189,7 +189,7 @@ function SplitPairView({
   const [faultSide, setFaultSide] = useState<"BOOK" | "BANK">("BOOK");
 
   async function pair() {
-    if (!selBank || !selBook) return;
+    if (!selBank || !selBook || oppositeDir) return;
     setLoading(true);
     try {
       const body: Record<string, unknown> = { bankTxId: selBank.id, bookTxId: selBook.id };
@@ -258,7 +258,12 @@ function SplitPairView({
             <span>Buku terpilih: <b className="font-mono tabular-nums text-slate-900">{formatIDR(selBook.amount)}</b></span>
             <span>Selisih: <b className={`font-mono tabular-nums ${oppositeDir ? "text-amber-600" : diff === 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatIDR(diff)}</b>{oppositeDir && <span className="ml-1 text-amber-600">(Arah berlawanan)</span>}</span>
           </div>
-          {diff !== 0 && (
+          {oppositeDir && (
+            <div className="w-full rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-700">
+              Tidak dapat dipasangkan: arah arus kas berlawanan (Masuk vs Keluar). Pilih pasangan berarah sama.
+            </div>
+          )}
+          {diff !== 0 && !oppositeDir && (
             <select
               value={faultSide}
               onChange={(e) => setFaultSide(e.target.value as "BOOK" | "BANK")}
@@ -272,12 +277,12 @@ function SplitPairView({
             <button
               type="button"
               onClick={pair}
-              disabled={loading}
+              disabled={loading || oppositeDir}
               className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               {loading ? "Memproses…" : "Pasangkan"}
             </button>
-            <button type="button" onClick={() => setSelection({ bankId: null, bookId: null })} className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50">Batal</button>
+            <button type="button" onClick={() => setSelection({ bankId: null, bookId: null })} disabled={loading} className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">Batal</button>
           </div>
         </div>
       )}
@@ -597,15 +602,17 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
   //  • penyesuaian sisi BUKU (source BOOK): IN menambah Bank → bankSideAdjImpact
   //  • netDiffImpact = bankSideAdjImpact − bookAdjImpact (perubahan aktual pada Selisih)
   const bookAdjImpact = useMemo(
-    () => bankAdjItems.filter((it) => it.source === "BANK").reduce((s, it) => s + (it.direction === "IN" ? it.amount : -it.amount), 0),
+    () => bankAdjItems.filter((it) => getAdjustmentSide(it.category) === "BOOK").reduce((s, it) => s + getSignedAmount(it.category, it.amount), 0),
     [bankAdjItems],
   );
   const bankSideAdjImpact = useMemo(
-    () => bankAdjItems.filter((it) => it.source === "BOOK").reduce((s, it) => s + (it.direction === "IN" ? it.amount : -it.amount), 0),
+    () => bankAdjItems.filter((it) => getAdjustmentSide(it.category) === "BANK").reduce((s, it) => s + getSignedAmount(it.category, it.amount), 0),
     [bankAdjItems],
   );
   const netDiffImpact = bankSideAdjImpact - bookAdjImpact;
-  const mixedBatch = bankAdjItems.some((it) => it.source === "BANK") && bankAdjItems.some((it) => it.source === "BOOK");
+  const allBankSide = bankAdjItems.every((it) => getAdjustmentSide(it.category) === "BANK");
+  const allBookSide = bankAdjItems.every((it) => getAdjustmentSide(it.category) === "BOOK");
+  const mixedBatch = !allBankSide && !allBookSide;
 
   const pendingUnfinished = unmatchedRoutine.bank.length + unmatchedRoutine.book.length;
 
@@ -792,7 +799,7 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
             <div className={`flex flex-wrap items-center gap-2 ${viewMode === "split" ? "lg:hidden" : ""}`}>
               {([
                 ["ALL", "Semua Belum Selesai", pendingUnfinished],
-                ["BANK_ADJ", "Penyesuaian Bank", bankAdjItems.length],
+                ["BANK_ADJ", "Rekomendasi Otomatis", bankAdjItems.length],
                 ["NEED_PAIR", "Perlu Pasangkan", pendingUnfinished - bankAdjItems.length],
                 ["BANK", "Sisi Bank", unmatchedRoutine.bank.length],
                 ["BOOK", "Sisi Buku", unmatchedRoutine.book.length],
@@ -837,8 +844,8 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
                 </div>
                 <div className="hidden lg:block">
                   <SplitPairView
-                    bankItems={unmatchedRoutine.bank}
-                    bookItems={unmatchedRoutine.book}
+                    bankItems={unmatchedRoutine.bank.filter((t) => !t.adjustmentId)}
+                    bookItems={unmatchedRoutine.book.filter((t) => !t.adjustmentId)}
                     data={data}
                     onRefresh={onRefresh}
                     selection={splitSel}
@@ -885,14 +892,20 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
 
       {/* Dialog konfirmasi batch auto-jurnal */}
       {showBatchConfirm && bankAdjItems.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Konfirmasi batch auto-jurnal">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Konfirmasi batch penyesuaian otomatis">
           {/* Kunci penutupan saat loading */}
           <div className="absolute inset-0 bg-slate-900/40" onClick={() => { if (!batchLoading) setShowBatchConfirm(false); }} />
-          <div className="relative w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl">
+          <div className="relative w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h4 className="text-sm font-semibold text-slate-900">Terapkan {bankAdjItems.length} Rekomendasi Penyesuaian Otomatis?</h4>
-                <p className="mt-0.5 text-xs text-slate-500">Item berikut akan dicatat sebagai jurnal penyesuaian.</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {mixedBatch
+                    ? "Penyesuaian Sisi Buku akan membentuk jurnal otomatis; penyesuaian Sisi Bank (timing difference) dicatat tanpa jurnal."
+                    : allBankSide
+                      ? "Item berikut akan dicatat ke Sisi Buku sebagai jurnal penyesuaian otomatis."
+                      : "Item berikut akan dicatat sebagai penyesuaian Sisi Bank (tanpa jurnal)."}
+                </p>
               </div>
               <button type="button" onClick={() => { if (!batchLoading) setShowBatchConfirm(false); }} disabled={batchLoading} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
             </div>

@@ -40,9 +40,12 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
   const [faultSide, setFaultSide] = useState<"BOOK" | "BANK">("BOOK");
   const [loading, setLoading] = useState(false);
 
-  // Kandidat sisi lawan yang belum terselesaikan.
+  // Kandidat sisi lawan yang belum terselesaikan (tanpa penyesuaian).
   const oppositeUnmatched = useMemo(
-    () => (source.source === "BANK" ? data.unmatchedBook : data.unmatchedBank),
+    () =>
+      (source.source === "BANK" ? data.unmatchedBook : data.unmatchedBank).filter(
+        (t) => !t.adjustmentId,
+      ),
     [source.source, data],
   );
 
@@ -67,11 +70,11 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
 
   // Esc tutup drawer + lock scroll.
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !loading) onClose(); }
     window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
-  }, [onClose]);
+  }, [onClose, loading]);
 
   const selected = ranked.find((r) => r.item.id === candidateId);
   const oppositeDir = selected && selected.item.direction !== source.direction;
@@ -80,7 +83,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
   const diff = totalBank - totalBook;
 
   async function pair() {
-    if (!candidateId) return;
+    if (!candidateId || oppositeDir) return;
     setLoading(true);
     try {
       const bankTxId = source.source === "BANK" ? source.id : candidateId;
@@ -101,7 +104,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Cari pasangan untuk ${source.description}`}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => { if (!loading) onClose(); }} />
       {/* Panel */}
       <div className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl focus:outline-none">
         {/* Header sticky */}
@@ -119,7 +122,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
               <div className="text-xs text-slate-500">{source.reference || "—"} · {formatDateID(source.date)}</div>
               <div className="mt-0.5 font-mono text-sm tabular-nums text-slate-900">{formatIDR(source.amount)}</div>
             </div>
-            <button type="button" onClick={onClose} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-teal-500">
+            <button type="button" onClick={() => { if (!loading) onClose(); }} disabled={loading} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-teal-500 disabled:opacity-50">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -190,7 +193,7 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
           </div>
           {oppositeDir && (
             <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-700">
-              ⚠ Kandidat berarah <b>berlawanan</b> dengan transaksi sumber. Pastikan ini memang transaksi yang tepat (mis. penyesuaian), bukan pasangan normal.
+              Tidak dapat dipasangkan: arah arus kas berlawanan (Masuk vs Keluar). Pilih kandidat berarah sama.
             </div>
           )}
           {diff !== 0 && selected && (
@@ -211,12 +214,12 @@ export function ManualMatchDrawer({ source, data, onRefresh, onClose, onGoJourna
             <button
               type="button"
               onClick={pair}
-              disabled={finalized || !candidateId || loading}
+              disabled={finalized || !candidateId || loading || !!oppositeDir}
               className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               {loading ? "Memproses…" : "Pasangkan Sekarang"}
             </button>
-            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400">
+            <button type="button" onClick={() => { if (!loading) onClose(); }} disabled={loading} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 disabled:opacity-50">
               Batal
             </button>
           </div>
