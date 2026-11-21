@@ -13,7 +13,7 @@ import { suggestAdjustmentCategory, type CategorySuggestion } from "@/lib/engine
 import { getAdjustmentImpactLabel } from "@/lib/engine/adjustments";
 import type { AdjustmentCategory, CashDirection } from "@/lib/schemas/reconciliation";
 import type { TransactionDTO, MatchPairDTO } from "@/lib/session";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2, Lock, Unlock } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Sparkles, Link2, Lock, Unlock, X } from "lucide-react";
 import { ConfirmedMatchesTab } from "@/components/workbench/WorkbenchComponents";
 import { ManualMatchDrawer } from "@/components/workbench/ManualMatchDrawer";
 
@@ -192,13 +192,28 @@ function RoutineCard({
         <div className="font-mono text-sm tabular-nums text-right text-slate-900">{formatIDR(tx.amount)}</div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {suggestion && (
+        {suggestion ? (
+          <>
+            {/* Rekomendasi auto-jurnal → aksi utama hijau */}
+            <button
+              onClick={() => classify(suggestion.category)}
+              disabled={finalized || loading}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-emerald-500"
+            >
+              ✓ Catat ke Buku · {getCategoryLabel(suggestion.category)}
+            </button>
+            <button onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-teal-600 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-teal-500">
+              <Link2 className="h-3 w-3" /> Sudah ada di buku? Cari pasangan
+            </button>
+          </>
+        ) : (
+          /* Operasional biasa → tombol utama "Cari & Pasangkan" membuka drawer */
           <button
-            onClick={() => classify(suggestion.category)}
-            disabled={finalized || loading}
-            className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
+            onClick={onPair}
+            disabled={finalized}
+            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-teal-500"
           >
-            ✓ {getCategoryLabel(suggestion.category)} · {suggestion.impactLabel}
+            <Link2 className="h-3 w-3" /> Cari &amp; Pasangkan
           </button>
         )}
         <select
@@ -214,9 +229,6 @@ function RoutineCard({
             </option>
           ))}
         </select>
-        <button onClick={onPair} disabled={finalized} className="flex items-center gap-1 text-xs text-slate-500 hover:text-teal-600 disabled:opacity-50">
-          <Link2 className="h-3 w-3" /> Pasangkan manual
-        </button>
       </div>
     </div>
   );
@@ -332,7 +344,8 @@ function Accordion({ title, count, children, defaultOpen = false }: { title: str
 export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: HydratedSessionResponse; onRefresh: (updated?: HydratedSessionResponse) => void; onGoReport: () => void }) {
   const finalized = data.session.status === "FINALIZED";
   const s = data.summary;
-  const [filter, setFilter] = useState<"ALL" | "BANK" | "BOOK">("ALL");
+  const [triage, setTriage] = useState<"ALL" | "BANK_ADJ" | "NEED_PAIR" | "BANK" | "BOOK">("ALL");
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
   const [drawerSource, setDrawerSource] = useState<TransactionDTO | null>(null);
   const [reopening, setReopening] = useState(false);
 
@@ -398,11 +411,37 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
     return [...collect(unmatchedRoutine.bank, "BANK"), ...collect(unmatchedRoutine.book, "BOOK")];
   }, [unmatchedRoutine]);
 
-  // Filter untuk seksi rutin.
+  // Filter seksi rutin berdasarkan tab triage.
   const filteredRoutine = {
-    bank: filter === "BOOK" ? [] : unmatchedRoutine.bank,
-    book: filter === "BANK" ? [] : unmatchedRoutine.book,
+    bank: unmatchedRoutine.bank.filter((tx) => {
+      if (triage === "BOOK") return false;
+      if (triage === "NEED_PAIR" || triage === "BANK_ADJ") {
+        const sug = suggestAdjustmentCategory({ source: tx.source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount });
+        return triage === "BANK_ADJ" ? sug !== null : sug === null;
+      }
+      return true;
+    }),
+    book: unmatchedRoutine.book.filter((tx) => {
+      if (triage === "BANK") return false;
+      if (triage === "NEED_PAIR" || triage === "BANK_ADJ") {
+        const sug = suggestAdjustmentCategory({ source: tx.source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount });
+        return triage === "BANK_ADJ" ? sug !== null : sug === null;
+      }
+      return true;
+    }),
   };
+
+  // Item bank-adjustment (rekomendasi auto-jurnal biaya/bunga bank) untuk batch.
+  const bankAdjItems = useMemo(() => {
+    const collect = (list: TransactionDTO[], source: "BANK" | "BOOK") =>
+      list
+        .map((tx) => ({ tx, sug: suggestAdjustmentCategory({ source, direction: tx.direction as CashDirection, description: tx.description, date: tx.date, amount: tx.amount }) }))
+        .filter((it): it is { tx: TransactionDTO; sug: NonNullable<CategorySuggestion> } => it.sug !== null)
+        .map((it) => ({ transactionId: it.tx.id, category: it.sug.category, description: it.tx.description, amount: it.tx.amount, categoryLabel: getCategoryLabel(it.sug.category) }));
+    return [...collect(unmatchedRoutine.bank, "BANK"), ...collect(unmatchedRoutine.book, "BOOK")];
+  }, [unmatchedRoutine]);
+
+  const pendingUnfinished = unmatchedRoutine.bank.length + unmatchedRoutine.book.length;
 
   const totalTx = data.bankTransactions.length + data.bookTransactions.length;
   const resolvedTx = data.matches.filter((m) => m.isConfirmed).length * 2
@@ -549,32 +588,56 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
           </div>
         )}
 
-        {/* Seksi 3: Sisa Transaksi Rutin */}
-        {(filteredRoutine.bank.length > 0 || filteredRoutine.book.length > 0) && (
+        {/* Seksi 3: Triage — Sisa Transaksi Rutin */}
+        {(pendingUnfinished > 0 || bankAdjItems.length > 0) && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Sisa Transaksi Rutin</h3>
-              <div className="flex items-center gap-2">
-                <select
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value as "ALL" | "BANK" | "BOOK")}
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-teal-500"
+              <h3 className="text-sm font-semibold text-slate-900">Perlu Diproses</h3>
+              {smartRoutineItems.length >= 2 && (
+                <button
+                  onClick={applyAllSmart}
+                  disabled={finalized}
+                  className="flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-100 disabled:opacity-60"
                 >
-                  <option value="ALL">Semua</option>
-                  <option value="BANK">Hanya di Bank</option>
-                  <option value="BOOK">Hanya di Buku</option>
-                </select>
-                {smartRoutineItems.length >= 2 && (
-                  <button
-                    onClick={applyAllSmart}
-                    disabled={finalized}
-                    className="flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-100 disabled:opacity-60"
-                  >
-                    <Sparkles className="h-3 w-3" /> Terapkan Semua Saran Cerdas ({smartRoutineItems.length})
-                  </button>
-                )}
-              </div>
+                  <Sparkles className="h-3 w-3" /> Terapkan Semua Saran Cerdas ({smartRoutineItems.length})
+                </button>
+              )}
             </div>
+
+            {/* Triage tabs */}
+            <div className="flex flex-wrap items-center gap-2">
+              {([
+                ["ALL", "Semua Belum Selesai", pendingUnfinished],
+                ["BANK_ADJ", "Penyesuaian Bank", bankAdjItems.length],
+                ["NEED_PAIR", "Perlu Pasangkan", pendingUnfinished - bankAdjItems.length],
+                ["BANK", "Sisi Bank", unmatchedRoutine.bank.length],
+                ["BOOK", "Sisi Buku", unmatchedRoutine.book.length],
+              ] as const).map(([key, label, count]) => (
+                <button
+                  key={key}
+                  onClick={() => setTriage(key)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition focus-visible:ring-2 focus-visible:ring-teal-500 ${triage === key ? "bg-teal-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+                >
+                  {label} <span className="ml-0.5 rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-600">{count}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Banner batch auto-jurnal */}
+            {bankAdjItems.length >= 2 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+                <div className="text-sm text-emerald-800">
+                  <b>{bankAdjItems.length} rekomendasi auto-jurnal</b> biaya/bunga bank siap dicatat.
+                </div>
+                <button
+                  onClick={() => setShowBatchConfirm(true)}
+                  disabled={finalized}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  Terapkan {bankAdjItems.length} Rekomendasi Auto-Jurnal
+                </button>
+              </div>
+            )}
             {filteredRoutine.bank.map((tx) => (
               <RoutineCard key={tx.id} tx={tx} data={data} onRefresh={onRefresh} onPair={() => setDrawerSource(tx)} />
             ))}
@@ -603,6 +666,46 @@ export function ReconciliationDesk({ data, onRefresh, onGoReport }: { data: Hydr
       <div className="lg:col-span-4">
         <BalanceMirror data={data} onGoReport={onGoReport} />
       </div>
+
+      {/* Dialog konfirmasi batch auto-jurnal */}
+      {showBatchConfirm && bankAdjItems.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Konfirmasi batch auto-jurnal">
+          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setShowBatchConfirm(false)} />
+          <div className="relative w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900">Terapkan {bankAdjItems.length} Rekomendasi Auto-Jurnal?</h4>
+                <p className="mt-0.5 text-xs text-slate-500">Item berikut akan dicatat sebagai jurnal penyesuaian.</p>
+              </div>
+              <button onClick={() => setShowBatchConfirm(false)} aria-label="Tutup" className="rounded p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+            </div>
+            <ul className="mt-3 max-h-56 space-y-1.5 overflow-y-auto">
+              {bankAdjItems.map((it) => (
+                <li key={it.transactionId + it.category} className="flex items-center justify-between gap-2 rounded border border-slate-100 px-3 py-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate text-slate-700">{it.description}</span>
+                  <span className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">{it.categoryLabel}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 text-xs text-slate-500">
+              Estimasi dampak: total{" "}
+              <b className="font-mono tabular-nums text-slate-900">
+                {formatIDRAccountingShort(bankAdjItems.reduce((sum, it) => sum + (typeof it.amount === "number" ? it.amount : 0), 0))}
+              </b>{" "}
+              akan tercermin pada angka selisih rekonsiliasi.
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={async () => { setShowBatchConfirm(false); await applyAllSmart(); }}
+                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                Ya, Terapkan Semua
+              </button>
+              <button onClick={() => setShowBatchConfirm(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Slide-Over Drawer: Cari & Pasangkan */}
       {drawerTx && (
