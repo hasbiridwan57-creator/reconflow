@@ -241,3 +241,17 @@
 - [x] Halaman `/login` (masuk + daftar dalam satu form, tanpa OTP) + tombol Masuk/Keluar di footer sidebar.
 - [x] Commit `a153d92` (push main). Gate hijau: tsc 0 · lint 0 · **150 pass + 1 skip (17 test auth baru)** · build 0 (middleware 62,7 kB, /login First Load 105 kB).
 - [x] Verifikasi live production: register → me → logout → me=null → login ulang → password salah 401. **Isolasi:** sesi demo milik user A → anonim 404, user A 200; showcase `public` (cmwq4anp50000jp07leiemflr) tetap 200 tanpa login (API & workspace page).
+
+## Putaran: AUTO-DETEKSI TEMPLATE BANK (2026-11-22)
+### Backend/engine (pure, Vitest-safe)
+- [x] `src/lib/engine/bankTemplates.ts`: `detectBankTemplate({headers, rows, source})` — skor kecocokan header 0–1 terhadap 5 template (BCA, Mandiri, BNI, BRI, Buku Kas). Skor di bawah ambang → `generic` (tetap 200, minta mapping manual; TIDAK pernah gagalkan upload).
+- [x] Mapping kolom hasil deteksi + metadata default: nama bank/rekening, label periode Indonesia ("Oktober 2026"), tanggal akhir periode (ISO maks), saldo akhir dari **baris transaksi valid terakhir** (baris footer "TOTAL/JUMLAH" diabaikan — konsisten dengan halaman /new).
+- [x] `lastValidDataRow`, `latestDateFrom`, `isoToPeriodLabel`, `looksLikeIndonesianNumber` — semua pure.
+### Frontend (/new)
+- [x] Saat file masuk (CSV/XLSX): jalankan deteksi → simpan state `bankDetection`/`bookDetection`.
+- [x] Banner teal hasil deteksi ("Format BCA terdeteksi (83% cocok)") + catatan metadata terisi otomatis; tombol tutup.
+- [x] Auto-isi HANYA kolom metadata yang masih kosong (tidak menimpa input user). Saldo dari deteksi dipakai bila saldo dari baris valid terakhir kosong.
+### Test & Gate
+- [x] `tests/bankTemplates.test.ts` (12 test): deteksi BCA/Mandiri/buku kas, fallback generic, mapping kolom, baris TOTAL diabaikan, periode & saldo, angka Indonesia.
+- [x] Koreksi: alias Mandiri butuh "tanggal transaksi"/"no transaksi" (bukan hanya underscore) agar menang atas BCA saat header dipisah spasi.
+- [x] Commit `fa8c8fd`. Gate hijau: tsc 0 · lint 0 · **162 pass + 1 skip** · build 0 (`/new` 269 kB / 390 kB total). Live: health 200, /new 200.
