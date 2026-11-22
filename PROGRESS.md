@@ -255,3 +255,19 @@
 - [x] `tests/bankTemplates.test.ts` (12 test): deteksi BCA/Mandiri/buku kas, fallback generic, mapping kolom, baris TOTAL diabaikan, periode & saldo, angka Indonesia.
 - [x] Koreksi: alias Mandiri butuh "tanggal transaksi"/"no transaksi" (bukan hanya underscore) agar menang atas BCA saat header dipisah spasi.
 - [x] Commit `fa8c8fd`. Gate hijau: tsc 0 · lint 0 · **162 pass + 1 skip** · build 0 (`/new` 269 kB / 390 kB total). Live: health 200, /new 200.
+
+## Putaran: CARRY-FORWARD OUTSTANDING (2026-11-22)
+### Engine (pure + service)
+- [x] `src/lib/engine/carryForward.ts`: `buildCarryForwardItems` — hanya transaksi BANK yang belum tuntas (belum ada penyesuaian DAN tidak punya match terkonfirmasi). Kategori dari arah: IN → `DEPOSIT_IN_TRANSIT` (+), OUT → `OUTSTANDING_CHECK` (−); nominal memakai `buildAdjustmentFields` (tanda dari kategori, konsisten kontrak akuntansi).
+- [x] `buildCarryForwardPlan(sourceId, targetId, ownerKey)` — validasi akses kedua sesi (ownerKey / public → 404), sumber wajib BALANCED/FINALIZED.
+- [x] `applyCarryForward` — buat penyesuaian mandiri TANPA transactionId (tidak menyentuh transaksi baru sesi target). Idempoten via `auditNote` marker `SRC_TX:<id>` (dihitung dari penyesuaian berauditNote yang ada).
+- [x] Kontrak aman: engine & jurnal lama tidak berubah; carry-forward hanya MENAMBAH baris `ClassifiedAdjustment` sisi BANK.
+### API
+- [x] `GET /api/sessions/[id]/carry-forward?source=<id>` — pratinjau rencana (tanpa tulis).
+- [x] `POST /api/sessions/[id]/carry-forward` `{sourceSessionId}` — terapkan + audit log. Sumber = tujuan → 422.
+### UI (/new)
+- [x] Panel "Bawa Outstanding dari Periode Sebelumnya": pilih sesi BALANCED/FINALIZED, pratinjau item (tanggal, deskripsi, nominal bertanda, kategori), total dampak. Kosong → pesan hijau "semua sudah tuntas".
+- [x] Muncul hanya bila ada sesi sebelumnya; tidak mengganggu alur upload baru.
+### Test & Gate
+- [x] `tests/carryForward.test.ts` (9 test): arah→kategori & tanda, BOOK diabaikan, adjustment/match-konfirmasi diabaikan, match belum konfirmasi tetap dibawa, total gabungan, deskripsi fallback.
+- [x] Commit `f8dc556`. Gate hijau: tsc 0 · lint 0 · **171 pass + 1 skip** · build 0. Live: health 200, /new 200, endpoint carry-forward merespons (showcase public → items: [] karena sudah tuntas).
