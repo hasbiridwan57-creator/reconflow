@@ -13,7 +13,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { api } from "@/lib/api/client";
 import { parseIndonesianCurrency, parseFlexibleDate, COLUMN_ALIASES, type ColumnRole } from "@/lib/engine/parser";
 import { parseXlsx } from "@/lib/engine/spreadsheet";
-import { Upload, FileDown, ChevronDown, ChevronRight } from "lucide-react";
+import { detectBankTemplate, type DetectionResult } from "@/lib/engine/bankTemplates";
+import { Upload, FileDown, ChevronDown, ChevronRight, Sparkles, X } from "lucide-react";
 
 interface ParsedFile {
   fileName: string;
@@ -161,6 +162,8 @@ export default function NewSessionPage() {
     openingBalance: 0, endingBankBalance: 0, endingBookBalance: 0,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [bankDetection, setBankDetection] = useState<DetectionResult | null>(null);
+  const [bookDetection, setBookDetection] = useState<DetectionResult | null>(null);
 
   // Auto buka accordion jika ada kolom wajib yang gagal terdeteksi.
   const mapperAutoOpen = useMemo(() => {
@@ -176,6 +179,10 @@ export default function NewSessionPage() {
     const parsed: ParsedFile = { fileName: file.name, rows, headers, mapping };
     if (source === "BANK") setBank(parsed); else setBook(parsed);
 
+    // Deteksi template bank (OPI: onboarding semudah mungkin).
+    const detection = detectBankTemplate({ headers, rows, source });
+    if (source === "BANK") setBankDetection(detection); else setBookDetection(detection);
+
     const saldoKey = mapping.balance;
     const dateKey = mapping.date;
     // Parse tiap tanggal dulu (fix bug: string ISO vs DD/MM/YYYY tak sebanding leksikografis).
@@ -188,13 +195,31 @@ export default function NewSessionPage() {
     // Tahan baris footer: ambil baris transaksi valid TERAKHIR, bukan rows[length-1] buta.
     const last = lastValidRow(rows, mapping);
     const saldo = last && saldoKey ? Math.abs(parseIndonesianCurrency(last[saldoKey] ?? "")) : null;
-    setMeta((m) => ({
-      ...m,
-      ...(source === "BANK"
-        ? { endingBankBalance: saldo ?? m.endingBankBalance }
-        : { endingBookBalance: saldo ?? m.endingBookBalance }),
-      ...(latestDate && !m.periodEndDate ? { periodEndDate: latestDate } : {}),
-    }));
+
+    setMeta((m) => {
+      const next = {
+        ...m,
+        ...(source === "BANK"
+          ? { endingBankBalance: saldo ?? m.endingBankBalance }
+          : { endingBookBalance: saldo ?? m.endingBookBalance }),
+        ...(latestDate && !m.periodEndDate ? { periodEndDate: latestDate } : {}),
+      };
+      // Auto-isi metadata dari deteksi template (hanya kolom yang masih kosong).
+      if (detection?.defaults.bankAccountName && !m.bankAccountName) {
+        next.bankAccountName = detection.defaults.bankAccountName;
+      }
+      if (detection?.defaults.periodLabel && !m.periodLabel) {
+        next.periodLabel = detection.defaults.periodLabel;
+      }
+      if (detection?.defaults.periodEndDate && !m.periodEndDate) {
+        next.periodEndDate = detection.defaults.periodEndDate;
+      }
+      if (detection?.defaults.endingBalance !== undefined) {
+        if (source === "BANK" && !saldo) next.endingBankBalance = detection.defaults.endingBalance;
+        if (source === "BOOK" && !saldo) next.endingBookBalance = detection.defaults.endingBalance;
+      }
+      return next;
+    });
   }
 
   async function handleFile(file: File, source: "BANK" | "BOOK") {
@@ -287,6 +312,38 @@ export default function NewSessionPage() {
     <AppShell>
       <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">Impor Data Mutasi (CSV / Excel)</h1>
       <p className="mb-6 text-sm text-slate-600">Unggah Rekening Koran Bank &amp; Buku Kas Perusahaan, lalu jalankan auto-match.</p>
+
+      {/* Banner deteksi template — muncul setelah file direkognisi (OPI) */}
+      {(bankDetection || bookDetection) && (
+        <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50/60 p-4">
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
+            <div className="min-w-0 flex-1 space-y-1 text-sm">
+              {bankDetection && (
+                <div className={bankDetection.templateKey === "generic" ? "text-amber-700" : "text-teal-900"}>
+                  <span className="font-medium">Bank:</span> {bankDetection.summary}
+                </div>
+              )}
+              {bookDetection && (
+                <div className={bookDetection.templateKey === "generic" ? "text-amber-700" : "text-teal-900"}>
+                  <span className="font-medium">Buku:</span> {bookDetection.summary}
+                </div>
+              )}
+              <div className="text-teal-800">
+                Metadata yang bisa ditebak sudah terisi otomatis — periksa &amp; sesuaikan bila perlu.
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label="Tutup notifikasi"
+              onClick={() => { setBankDetection(null); setBookDetection(null); }}
+              className="shrink-0 rounded p-1 text-teal-600 transition-colors hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Langkah 1 — Dual dropzone */}
       <div className="grid gap-4 md:grid-cols-2">
