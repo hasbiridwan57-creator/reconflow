@@ -7,6 +7,10 @@ import type { NextResponse } from "next/server";
 
 export const WORKSPACE_COOKIE = "rf_workspace_id";
 const WORKSPACE_HEADER = "x-rf-workspace-id";
+/** Header internal identitas user (disuntik middleware setelah verifikasi cookie sesi). */
+export const AUTH_USER_HEADER = "x-rf-auth-user-id";
+/** ownerKey untuk sesi showcase yang bisa dibaca siapa pun. */
+export const PUBLIC_OWNER_KEY = "public";
 
 /** Valid UUID v4 (cukup longgar: 8-4-4-4-12 hex). */
 function isValidUuid(value: string | undefined | null): value is string {
@@ -29,8 +33,18 @@ function generateWorkspaceKey(): string {
 /**
  * Ambil ownerKey dari header internal ATAU cookie. Murni dari argumen `request`,
  * tanpa next/headers → aman dipanggil di route handler Vitest.
+ *
+ * Prioritas:
+ * 1. `x-rf-auth-user-id` — disuntik middleware setelah cookie sesi diverifikasi
+ *    (login OPI). ownerKey menjadi `user:<id>` sehingga data terisolasi per user.
+ * 2. `x-rf-workspace-id` — cookie anonim (tamu, kompatibel dengan perilaku lama).
  */
 export function getWorkspaceKey(request: Request): { ownerKey: string; isNew: boolean } {
+  const authUser = request.headers.get(AUTH_USER_HEADER);
+  if (authUser && isValidUuid(authUser)) {
+    return { ownerKey: `user:${authUser}`, isNew: false };
+  }
+
   const fromHeader = request.headers.get(WORKSPACE_HEADER);
   if (isValidUuid(fromHeader)) {
     return { ownerKey: fromHeader, isNew: false };
@@ -73,5 +87,14 @@ export function attachWorkspaceCookie(res: NextResponse, ownerKey: string): Next
  * Kembalikan true jika boleh diakses; false → route mengembalikan 404.
  */
 export function canAccessSession(sessionOwnerKey: string | null | undefined, ownerKey: string): boolean {
-  return sessionOwnerKey === ownerKey || sessionOwnerKey === "public";
+  return sessionOwnerKey === ownerKey || sessionOwnerKey === PUBLIC_OWNER_KEY;
+}
+
+/**
+ * Ambil userId yang sedang login dari header internal (disuntik middleware).
+ * Return null bila tamu (belum login) — route memakai ini untuk membatasi aksi.
+ */
+export function getAuthUserId(request: Request): string | null {
+  const authUser = request.headers.get(AUTH_USER_HEADER);
+  return authUser && isValidUuid(authUser) ? authUser : null;
 }

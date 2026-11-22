@@ -8,9 +8,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Wallet, History, LayoutDashboard, X, Plus } from "lucide-react";
-import { api, type SessionListItem } from "@/lib/api/client";
+import { useRouter, usePathname } from "next/navigation";
+import { Wallet, History, LayoutDashboard, X, Plus, LogOut, LogIn } from "lucide-react";
+import { api, type AuthUser, type SessionListItem } from "@/lib/api/client";
 
 const NAV = [
   { href: "/", label: "Beranda", icon: LayoutDashboard },
@@ -24,8 +24,40 @@ function statusDot(status: string): string {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // Identitas login — hanya untuk tombol Masuk/Keluar di footer sidebar.
+  useEffect(() => {
+    let alive = true;
+    api
+      .me()
+      .then((r) => {
+        if (alive) setUser(r.user);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await api.logout();
+      setUser(null);
+      setSessions([]);
+      router.push("/");
+      router.refresh();
+    } catch {
+      /* abaikan — logout tetap dianggap selesai */
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   const loadSessions = useCallback(async () => {
     try {
@@ -81,7 +113,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           (wrapper luar tetap `flex min-h-screen` supaya sticky BalanceMirror &
           scroll native browser tidak rusak). */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:self-start">
-        <SidebarContent pathname={pathname} sessions={sessions} />
+        <SidebarContent
+          pathname={pathname}
+          sessions={sessions}
+          user={user}
+          loggingOut={loggingOut}
+          onLogout={handleLogout}
+        />
       </aside>
 
       {/* Sidebar mobile drawer */}
@@ -97,7 +135,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <SidebarContent pathname={pathname} sessions={sessions} onNavigate={() => setDrawerOpen(false)} />
+            <SidebarContent
+              pathname={pathname}
+              sessions={sessions}
+              onNavigate={() => setDrawerOpen(false)}
+              user={user}
+              loggingOut={loggingOut}
+              onLogout={handleLogout}
+            />
           </aside>
         </div>
       )}
@@ -134,10 +179,16 @@ function SidebarContent({
   pathname,
   sessions,
   onNavigate,
+  user,
+  loggingOut,
+  onLogout,
 }: {
   pathname: string;
   sessions: SessionListItem[];
   onNavigate?: () => void;
+  user: AuthUser | null;
+  loggingOut: boolean;
+  onLogout: () => void;
 }) {
   return (
     <>
@@ -225,9 +276,36 @@ function SidebarContent({
         )}
       </div>
 
-      {/* Footer */}
+      {/* Footer — tombol Masuk / Keluar (login OPI) */}
       <div className="border-t border-slate-200 p-3">
-        <span className="inline-block rounded border border-slate-200/80 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
+        {user ? (
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-slate-800">
+                {user.name || user.email}
+              </div>
+              {user.name && <div className="truncate text-[11px] text-slate-400">{user.email}</div>}
+            </div>
+            <button
+              type="button"
+              onClick={onLogout}
+              disabled={loggingOut}
+              title="Keluar"
+              aria-label="Keluar"
+              className="shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:opacity-50"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <Link
+            href="/login"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+          >
+            <LogIn className="h-4 w-4" /> Masuk
+          </Link>
+        )}
+        <span className="mt-2 inline-block rounded border border-slate-200/80 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
           Double-Entry · Audit-Ready
         </span>
       </div>

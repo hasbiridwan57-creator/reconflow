@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Pengguna aplikasi (login email + password). Password disimpan sebagai hash
+/// bcrypt, TIDAK pernah plaintext. tokenVersion untuk mencabut sesi lama.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("")
+  tokenVersion Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
 model ReconciliationSession {
   id                    String   @id @default(cuid())
   companyName           String

@@ -4,6 +4,14 @@
  */
 import type { HydratedSessionResponse, SessionMeta } from "@/lib/session";
 
+/** Identitas user yang sedang login (dari GET /api/auth/me). */
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+
 export interface SessionListItem {
   id: string;
   companyName: string;
@@ -59,6 +67,13 @@ async function mutate<T>(fn: () => Promise<T>): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string; timestamp: string }>("/api/health"),
+  // ── Auth (OPI) ──
+  me: () => request<{ user: AuthUser | null }>("/api/auth/me"),
+  register: (body: { name?: string; email: string; password: string }) =>
+    mutate(() => request<AuthUser>("/api/auth", { method: "POST", body: JSON.stringify(body) })),
+  login: (body: { email: string; password: string }) =>
+    mutate(() => request<AuthUser>("/api/auth", { method: "PUT", body: JSON.stringify(body) })),
+  logout: () => mutate(() => request<{ ok: boolean }>("/api/auth", { method: "DELETE" })),
   listSessions: (params?: { q?: string; status?: string }) => {
     const qs = new URLSearchParams();
     if (params?.q) qs.set("q", params.q);
