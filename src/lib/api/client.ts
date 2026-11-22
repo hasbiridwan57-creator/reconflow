@@ -11,6 +11,35 @@ export interface AuthUser {
   name: string;
 }
 
+/** Item carry-forward dari sesi sumber (belum tuntas). */
+export interface CarryForwardItem {
+  sourceTransactionId: string;
+  side: "BANK" | "BOOK";
+  category: string;
+  signedAmount: number;
+  description: string;
+  date: string;
+  reference: string;
+}
+
+/** Rencana carry-forward (GET). */
+export interface CarryForwardPlan {
+  sourceSessionId: string;
+  sourcePeriodLabel: string;
+  items: CarryForwardItem[];
+  totalSignedAmount: number;
+}
+
+/** Hasil penerapan carry-forward (POST). */
+export interface CarryForwardApplyResult {
+  sourceSessionId: string;
+  sourcePeriodLabel: string;
+  createdCount: number;
+  skippedCount: number;
+  totalSignedAmount: number;
+}
+
+
 
 export interface SessionListItem {
   id: string;
@@ -163,6 +192,16 @@ export const api = {
       request<HydratedSessionResponse>(`/api/sessions/${id}/finalize`, {
         method: "POST",
         body: JSON.stringify(body),
+      }),
+    ),
+  // ── Carry-forward outstanding (OPI) ──
+  getCarryForwardPlan: (id: string, sourceSessionId: string) =>
+    request<CarryForwardPlan>(`/api/sessions/${id}/carry-forward?source=${encodeURIComponent(sourceSessionId)}`),
+  applyCarryForward: (id: string, sourceSessionId: string) =>
+    mutate(() =>
+      request<CarryForwardApplyResult>(`/api/sessions/${id}/carry-forward`, {
+        method: "POST",
+        body: JSON.stringify({ sourceSessionId }),
       }),
     ),
 };

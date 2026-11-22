@@ -5,16 +5,16 @@
  */
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
-import { api } from "@/lib/api/client";
+import { api, type SessionListItem, type CarryForwardPlan } from "@/lib/api/client";
 import { parseIndonesianCurrency, parseFlexibleDate, COLUMN_ALIASES, type ColumnRole } from "@/lib/engine/parser";
 import { parseXlsx } from "@/lib/engine/spreadsheet";
 import { detectBankTemplate, type DetectionResult } from "@/lib/engine/bankTemplates";
-import { Upload, FileDown, ChevronDown, ChevronRight, Sparkles, X } from "lucide-react";
+import { Upload, FileDown, ChevronDown, ChevronRight, Sparkles, X, ArrowRightLeft, Loader2 } from "lucide-react";
 
 interface ParsedFile {
   fileName: string;
@@ -164,6 +164,45 @@ export default function NewSessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [bankDetection, setBankDetection] = useState<DetectionResult | null>(null);
   const [bookDetection, setBookDetection] = useState<DetectionResult | null>(null);
+
+  // Carry-forward outstanding: bawa item belum tuntas dari periode sebelumnya.
+  const [priorSessions, setPriorSessions] = useState<SessionListItem[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string>("");
+  const [carryPlan, setCarryPlan] = useState<CarryForwardPlan | null>(null);
+  const [carryLoading, setCarryLoading] = useState(false);
+
+  // Sesi sebelumnya milik workspace ini (untuk opsi carry-forward).
+  useEffect(() => {
+    let alive = true;
+    api
+      .listSessions()
+      .then((list) => {
+        if (alive) setPriorSessions(list.filter((s) => s.status === "BALANCED" || s.status === "FINALIZED").slice(0, 8));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function loadCarryPlan(sourceSessionId: string) {
+    setSelectedSourceId(sourceSessionId);
+    setCarryPlan(null);
+    if (!sourceSessionId) return;
+    setCarryLoading(true);
+    try {
+      // Sesi target belum ada (masih di halaman intake) → gunakan id placeholder
+      // yang valid untuk endpoint read-only. Endpoint hanya memvalidasi akses
+      // kedua sesi; target "0000" akan 404, jadi kita pakai sesi sumber sendiri
+      // sebagai target untuk PREVIEW (tidak ada penulisan di GET).
+      const plan = await api.getCarryForwardPlan(sourceSessionId, sourceSessionId);
+      setCarryPlan(plan);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal memuat rencana carry-forward.");
+    } finally {
+      setCarryLoading(false);
+    }
+  }
 
   // Auto buka accordion jika ada kolom wajib yang gagal terdeteksi.
   const mapperAutoOpen = useMemo(() => {
@@ -342,6 +381,77 @@ export default function NewSessionPage() {
               <X className="h-4 w-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Carry-forward outstanding — bawa item belum tuntas dari periode sebelumnya (OPI) */}
+      {priorSessions.length > 0 && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <ArrowRightLeft className="h-4 w-4 text-teal-600" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-slate-900">Bawa Outstanding dari Periode Sebelumnya</div>
+              <div className="text-xs text-slate-500">
+                Item belum tuntas (setoran dalam perjalanan / cek beredar) otomatis jadi penyesuaian awal sesi baru.
+              </div>
+            </div>
+            <select
+              value={selectedSourceId}
+              onChange={(e) => void loadCarryPlan(e.target.value)}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+            >
+              <option value="">— Pilih sesi sebelumnya —</option>
+              {priorSessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.periodLabel} · {s.bankAccountName} ({s.status})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {carryLoading && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> Memuat item outstanding…
+            </div>
+          )}
+
+          {carryPlan && !carryLoading && (
+            <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">
+              {carryPlan.items.length === 0 ? (
+                <div className="text-sm text-emerald-600">
+                  ✓ Semua transaksi periode {carryPlan.sourcePeriodLabel} sudah tuntas — tidak ada yang perlu dibawa.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">{carryPlan.items.length} item</span> akan dibawa dari{" "}
+                    <span className="font-medium">{carryPlan.sourcePeriodLabel}</span> · total dampak{" "}
+                    <span className="font-mono tabular-nums">{carryPlan.totalSignedAmount.toLocaleString("id-ID")}</span>:
+                  </div>
+                  <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-slate-600">
+                    {carryPlan.items.map((item) => (
+                      <li key={item.sourceTransactionId} className="flex items-center justify-between gap-2 rounded border border-slate-100 bg-white px-2 py-1.5">
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className="font-mono tabular-nums text-slate-400">{item.date}</span>{" "}
+                          {item.description}
+                        </span>
+                        <span className={`shrink-0 font-mono tabular-nums ${item.signedAmount >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                          {item.signedAmount >= 0 ? "+" : ""}
+                          {item.signedAmount.toLocaleString("id-ID")}
+                        </span>
+                        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          {item.category === "DEPOSIT_IN_TRANSIT" ? "Deposit in Transit" : "Outstanding Check"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="text-[11px] text-slate-400">
+                    Item ini akan otomatis menjadi penyesuaian sisi Bank saat sesi baru dibuat — tinjau jumlah & kategorinya di langkah berikutnya.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
