@@ -17,7 +17,7 @@ import {
 } from "@/lib/auth";
 
 const CredentialsSchema = z.object({
-  email: z.string().min(3).max(200),
+  email: z.string().trim().toLowerCase().email().max(200),
   password: z.string().min(6).max(200),
 });
 
