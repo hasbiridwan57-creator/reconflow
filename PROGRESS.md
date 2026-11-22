@@ -234,7 +234,10 @@
 - [x] `<aside>` desktop: `lg:sticky lg:top-0 lg:h-screen lg:self-start` — wrapper luar tetap `flex min-h-screen` (sticky `BalanceMirror` & scroll native browser aman). `lg:self-start` wajib agar aside tidak ikut ter-stretch setinggi flex row.
 - [x] Container REKENING AKTIF: `min-h-0 flex-1 overflow-y-auto px-3 pb-3` (hanya `min-h-0` yang ditambah). **Koreksi sendiri:** commit pertama sempat menyisipkan `flex` nyasar (daftar jadi horizontal) — tertangkap saat verifikasi live, diperbaiki di commit koreksi.
 - [x] Commit `86465d6` + `6371e88`. Verifikasi live (Chromium): aside tetap `top=0` saat `main` bergeser −154 px; daftar scroll independen (40 item disuntikkan → `scrollHeight 1971 > clientHeight 291`, `scrollTop`→180, `window.scrollY` tetap 0); footer menempel `bottom=577` = tinggi viewport; sticky `BalanceMirror` tetap hidup.
-### Login OPI (email + password + session cookie) — menyusul
-- [ ] Tabel `User` + hash password (bcrypt/argon2), endpoint register/login/logout, middleware verifikasi session.
-- [ ] `ownerKey` beralih dari cookie anonim → `user:<id>`; showcase `public` tetap bisa dibaca.
-- [ ] Halaman login + proteksi route workspace (kecuali demo `public`).
+### Login OPI (email + password + session cookie)
+- [x] Tabel `User` (bcrypt `passwordHash`, `tokenVersion` untuk revoke) + JWT HS256 di cookie httpOnly `rf_session` (7 hari). Dependency: `bcryptjs` + `jsonwebtoken` (+ `@types`).
+- [x] Endpoint: `POST /api/auth` (register), `PUT /api/auth` (login), `DELETE /api/auth` (logout), `GET /api/auth/me`. Env `AUTH_SECRET` diset di Vercel (prod+preview).
+- [x] Middleware: verifikasi cookie sesi → header internal `x-rf-auth-user-id` → `getWorkspaceKey()` memakai ownerKey `user:<id>`. Tamu tetap pakai cookie anonim (perilaku lama utuh).
+- [x] Halaman `/login` (masuk + daftar dalam satu form, tanpa OTP) + tombol Masuk/Keluar di footer sidebar.
+- [x] Commit `a153d92` (push main). Gate hijau: tsc 0 · lint 0 · **150 pass + 1 skip (17 test auth baru)** · build 0 (middleware 62,7 kB, /login First Load 105 kB).
+- [x] Verifikasi live production: register → me → logout → me=null → login ulang → password salah 401. **Isolasi:** sesi demo milik user A → anonim 404, user A 200; showcase `public` (cmwq4anp50000jp07leiemflr) tetap 200 tanpa login (API & workspace page).
