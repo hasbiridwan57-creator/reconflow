@@ -12,10 +12,12 @@ export const AUTH_USER_HEADER = "x-rf-auth-user-id";
 /** ownerKey untuk sesi showcase yang bisa dibaca siapa pun. */
 export const PUBLIC_OWNER_KEY = "public";
 
-/** Valid UUID v4 (cukup longgar: 8-4-4-4-12 hex). */
-function isValidUuid(value: string | undefined | null): value is string {
+/** Validasi id workspace/user: UUID v4 ATAU cuid (Prisma `@default(cuid())`, mis. `cmws1...`). */
+function isValidWorkspaceId(value: string | undefined | null): value is string {
   if (!value) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  // UUID v4 (8-4-4-4-12 hex) ATAU cuid Prisma (diawali huruf, min. 24 karakter alfanumerik).
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+    || /^[a-z][a-z0-9]{23,}$/i.test(value);
 }
 
 function generateWorkspaceKey(): string {
@@ -41,12 +43,12 @@ function generateWorkspaceKey(): string {
  */
 export function getWorkspaceKey(request: Request): { ownerKey: string; isNew: boolean } {
   const authUser = request.headers.get(AUTH_USER_HEADER);
-  if (authUser && isValidUuid(authUser)) {
+  if (authUser && isValidWorkspaceId(authUser)) {
     return { ownerKey: `user:${authUser}`, isNew: false };
   }
 
   const fromHeader = request.headers.get(WORKSPACE_HEADER);
-  if (isValidUuid(fromHeader)) {
+  if (isValidWorkspaceId(fromHeader)) {
     return { ownerKey: fromHeader, isNew: false };
   }
   const cookieHeader = request.headers.get("cookie");
@@ -57,7 +59,7 @@ export function getWorkspaceKey(request: Request): { ownerKey: string; isNew: bo
       .find((c) => c.startsWith(`${WORKSPACE_COOKIE}=`));
     if (match) {
       const value = decodeURIComponent(match.slice(WORKSPACE_COOKIE.length + 1));
-      if (isValidUuid(value)) {
+      if (isValidWorkspaceId(value)) {
         return { ownerKey: value, isNew: false };
       }
     }
@@ -96,5 +98,5 @@ export function canAccessSession(sessionOwnerKey: string | null | undefined, own
  */
 export function getAuthUserId(request: Request): string | null {
   const authUser = request.headers.get(AUTH_USER_HEADER);
-  return authUser && isValidUuid(authUser) ? authUser : null;
+  return authUser && isValidWorkspaceId(authUser) ? authUser : null;
 }

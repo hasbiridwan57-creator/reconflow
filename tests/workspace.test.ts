@@ -51,4 +51,35 @@ describe("workspace helper (pure, tanpa next/headers)", () => {
     expect(canAccessSession("public", "user-B")).toBe(true);
     expect(canAccessSession("user-A", "user-B")).toBe(false);
   });
+
+  it("x-rf-auth-user-id berisi cuid Prisma (mis. cmws1...) diterima → ownerKey user:<cuid>", () => {
+    // User ID Prisma memakai @default(cuid()) — bukan UUID. Validasi lama (UUID saja)
+    // membuat login OPI gagal terdeteksi dan semua request diperlakukan sebagai tamu.
+    const cuid = "cmws1bu1h0000jz08igbdr932";
+    const req = new Request("http://localhost/api/sessions", {
+      headers: { "x-rf-auth-user-id": cuid },
+    });
+    const r = getWorkspaceKey(req);
+    expect(r.ownerKey).toBe(`user:${cuid}`);
+    expect(r.isNew).toBe(false);
+  });
+
+  it("x-rf-auth-user-id UUID juga tetap diterima", () => {
+    const req = new Request("http://localhost/api/sessions", {
+      headers: { "x-rf-auth-user-id": "11111111-2222-4333-8444-555555555555" },
+    });
+    const r = getWorkspaceKey(req);
+    expect(r.ownerKey).toBe("user:11111111-2222-4333-8444-555555555555");
+  });
+
+  it("header auth pendek/salah format diabaikan (fallback cookie)", () => {
+    const req = new Request("http://localhost/api/sessions", {
+      headers: {
+        "x-rf-auth-user-id": "x1",
+        cookie: `${WORKSPACE_COOKIE}=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`,
+      },
+    });
+    const r = getWorkspaceKey(req);
+    expect(r.ownerKey).toBe("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  });
 });
