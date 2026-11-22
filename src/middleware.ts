@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
+import { SESSION_COOKIE } from "@/lib/auth";
+import { verifySessionTokenEdge } from "@/lib/authEdge";
 
 export const WORKSPACE_COOKIE = "rf_workspace_id";
 
@@ -7,17 +8,19 @@ export const WORKSPACE_COOKIE = "rf_workspace_id";
  * Dua lapis:
  * 1. `rf_session` (login OPI) — jika ada & valid, identitas user disuntik ke
  *    header internal `x-rf-auth-user-id` sehingga getWorkspaceKey() memakai
- *    ownerKey `user:<id>` (data terisolasi per akun).
+ *    ownerKey `user:<id>` (data terisolasi per akun). Verifikasi memakai Web
+ *    Crypto (edge-compatible) — jsonwebtoken bergantung pada modul `crypto`
+ *    Node yang tidak tersedia di Edge Runtime.
  * 2. `rf_workspace_id` (cookie anonim) — tetap dibuat untuk TAMU supaya
  *    pengunjung tanpa akun tetap punya workspace sendiri dan demo "public"
  *    tetap bisa dibaca. Perilaku lama tidak rusak.
  */
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
 
-  // 1) Login OPI — verifikasi cookie sesi.
+  // 1) Login OPI — verifikasi cookie sesi (edge-safe).
   const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
-  const claims = verifySessionToken(sessionToken);
+  const claims = await verifySessionTokenEdge(sessionToken);
   if (claims) {
     requestHeaders.set("x-rf-auth-user-id", claims.userId);
     requestHeaders.set("x-rf-auth-email", claims.email);
