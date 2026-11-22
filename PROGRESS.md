@@ -228,3 +228,13 @@
 - [x] Gate hijau: tsc 0 · lint 0 · **131 pass + 1 skip (132)** · build 0.
 - [x] Bundle: `/workspace/[id]` First Load JS 150→151 kB (285 kB total); `exceljs` di chunk lazy terpisah 910 kB (tidak ada di manifest awal workspace).
 - [x] Fidelity pratinjau Excel: `formatCellDisplay()` menghormati `numFmt` berkas (`#,##0` → `68.181.000`, `0.0%` → `73,7%`); jalur impor `parseXlsx` tetap pakai `cellToString` mentah. +2 test.
+
+## Putaran: SIDEBAR STICKY + LOGIN OPI (2026-11-21)
+### Sidebar desktop tidak ikut scroll
+- [x] `<aside>` desktop: `lg:sticky lg:top-0 lg:h-screen lg:self-start` — wrapper luar tetap `flex min-h-screen` (sticky `BalanceMirror` & scroll native browser aman). `lg:self-start` wajib agar aside tidak ikut ter-stretch setinggi flex row.
+- [x] Container REKENING AKTIF: `min-h-0 flex-1 overflow-y-auto px-3 pb-3` (hanya `min-h-0` yang ditambah). **Koreksi sendiri:** commit pertama sempat menyisipkan `flex` nyasar (daftar jadi horizontal) — tertangkap saat verifikasi live, diperbaiki di commit koreksi.
+- [x] Commit `86465d6` + `6371e88`. Verifikasi live (Chromium): aside tetap `top=0` saat `main` bergeser −154 px; daftar scroll independen (40 item disuntikkan → `scrollHeight 1971 > clientHeight 291`, `scrollTop`→180, `window.scrollY` tetap 0); footer menempel `bottom=577` = tinggi viewport; sticky `BalanceMirror` tetap hidup.
+### Login OPI (email + password + session cookie) — menyusul
+- [ ] Tabel `User` + hash password (bcrypt/argon2), endpoint register/login/logout, middleware verifikasi session.
+- [ ] `ownerKey` beralih dari cookie anonim → `user:<id>`; showcase `public` tetap bisa dibaca.
+- [ ] Halaman login + proteksi route workspace (kecuali demo `public`).
